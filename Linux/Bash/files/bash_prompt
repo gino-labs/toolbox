@@ -75,8 +75,8 @@ STRIKETHRU=9
 
 # Prompt Color Controls
 ACCENT_CLR=$(set_fg 15)
-USER_CLR=$(set_fg "$(random_color)" "$BOLD")
-HOST_CLR=$(set_fg "$(random_color)" "$BOLD")
+USER_CLR=$(set_fg 29 "$BOLD")
+HOST_CLR=$(set_fg 100 "$BOLD")
 WDIR_CLR=$(set_fg 250 "$BOLD")
 VENV_CLR=$(set_fg 250 "$BOLD")
 REPO_CLR=$(set_fg 250 "$BOLD")

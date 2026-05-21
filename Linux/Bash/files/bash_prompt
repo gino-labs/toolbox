@@ -74,9 +74,17 @@ HIDDEN=8
 STRIKETHRU=9
 
 # Prompt Color Controls
+case "$(roll_rand 1 2)" in
+  1) C1=203 && C2=37;;
+  2) C1=100 && C2=29;;
+  *) C1=59 && C2=59
+esac
+
+
+esac
 ACCENT_CLR=$(set_fg 15)
-USER_CLR=$(set_fg 29 "$BOLD")
-HOST_CLR=$(set_fg 100 "$BOLD")
+USER_CLR=$(set_fg "$C1" "$BOLD")
+HOST_CLR=$(set_fg "$C2" "$BOLD")
 WDIR_CLR=$(set_fg 250 "$BOLD")
 VENV_CLR=$(set_fg 250 "$BOLD")
 REPO_CLR=$(set_fg 250 "$BOLD")

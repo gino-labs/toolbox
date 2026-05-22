@@ -113,11 +113,15 @@ vim
 
 %post --interpreter=/usr/libexec/platform-python --log=/root/post-kickstart.log
 import os
+
 # Setup passwordless sudo for ansible
-sudo_file = "/etc/sudoers.d/ansible"
-with open(sudo_file, w) as f:
-    text = "ansible ALL=(ALL) NOPASSWD: ALL"
-    f.write(text)
-os.chown(sudo_file, 0, 0)
-os.chmod(sudo_file", "0o440")
+path = "/etc/sudoers.d/ansible"
+content = "ansible ALL=(ALL) NOPASSWD: ALL"
+
+with open(path, "w") as f:
+    f.write(content)
+
+os.chown(path, 0, 0)
+os.chmod(path", "0o440")
+
 %end

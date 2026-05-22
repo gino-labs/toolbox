@@ -66,23 +66,33 @@ part pv.1 --fstype=lvmpv --encrypted --passphrase={{ luks_pw }}
 
 lvm_partitions = f'''
 volgroup vg pv.1
-logvol / --vgname=vg --name=root --fstype=xfs --percent=25 --grow --fsoptions=defaults
-logvol /home --vgname=vg --name=home --fstype=xfs --percent=15 --grow --fsoptions=defaults
-logvol /var --vgname=vg --name=var --fstype=xfs --percent=5 --grow --fsoptions=defaults
-logvol /var/log --vgname=vg --name=var_log --fstype=xfs --percent=5 --grow --fsoptions=defaults
-logvol /var/tmp --vgname=vg --name=var_tmp --fstype=xfs --percent=3 --grow --fsoptions=defaults
-logvol /tmp --vgname=vg --name=tmp --fstype=xfs --percent=2 --grow --fsoptions=defaults
-logvol /scratch --vgname=vg --name=scratch --fstype=xfs --percent=15 --grow --fsoptions=defaults
-logvol swap --vgname=vg --name=swap --fstype=swap --size=8 --fsoptions=defaults
+logvol / --vgname={{ vgname }} --name=root --fstype=xfs --percent=25 --grow --fsoptions=defaults
+logvol /home --vgname={{ vgname }} --name=home --fstype=xfs --percent=15 --grow --fsoptions=defaults
+logvol /var --vgname={{ vgname }} --name=var --fstype=xfs --percent=5 --grow --fsoptions=defaults
+logvol /var/log --vgname={{ vgname }} --name=var_log --fstype=xfs --percent=5 --grow --fsoptions=defaults
+logvol /var/tmp --vgname={{ vgname }} --name=var_tmp --fstype=xfs --percent=3 --grow --fsoptions=defaults
+logvol /tmp --vgname={{ vgname }} --name=tmp --fstype=xfs --percent=2 --grow --fsoptions=defaults
+logvol /scratch --vgname={{ vgname }} --name=scratch --fstype=xfs --percent=15 --grow --fsoptions=defaults
+logvol swap --vgname={{ vgname }} --name=swap --fstype=swap --size=8 --fsoptions=defaults
+
+'''
+
+auto_partitions = f'''
+ignoredisk --only-use={d1}
+bootloader --location=mbr --boot-drive={d1} --driveorder={d1}  --iscrypted --password={{ grub_pw }}
+clearpart --all --initlabel --drives={d1}
+autopart --fstype=xfs --encrypted --passphrase={{ luks_pw }}
 
 '''
 
 with open("/tmp/partitioning", "w") as f:
-    if d2 is not None:
-        f.write(raid_partitions)
+    GBSIZE = 96 * 1024**3
+    if d2 is None and disks[0]["size"] < GBSIZE:
+        f.write(auto_partitions)
+    elif d2 and disks[0]["size"] > GBSIZE:
+        f.write(raid_partitions + lvm_partitions)
     else:
-        f.write(reg_partitions)
-    f.write(lvm_partitions)
+        f.write(reg_partitions + lvm_partitions)
 %end
 
 # Command Section

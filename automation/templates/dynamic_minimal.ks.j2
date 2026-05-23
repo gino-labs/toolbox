@@ -38,7 +38,7 @@ else:
 
 raid_partitions = f'''
 ignoredisk --only-use={d1},{d2}
-bootloader --location=mbr --boot-drive={d1} --driveorder={d1},{d2}  --iscrypted --password={{ grub_pw }}
+bootloader --location=mbr --boot-drive={d1} --driveorder={d1},{d2}  --iscrypted --password="{{ grub_pw }}"
 
 part raid.0 --size=2048 --ondisk={d1}
 part raid.1 --size=2048 --ondisk={d2}
@@ -50,17 +50,17 @@ part /boot/efi --fstype=efi --size=512 --ondisk={d1} --label=EFI
 part efi.02 --fstype=efi --size=512 --ondisk={d2} --label=EFI2
 
 raid /boot --fstype=xfs --level=1 --device=md0 raid.0 raid.1 --label=BOOT
-raid pv.1 --fstype=lvmpv --level=1 --device=md1 --encrypted --passphrase={{ luks_pw }} raid.2 raid.3
+raid pv.1 --fstype=lvmpv --level=1 --device=md1 --encrypted --passphrase="{{ luks_pw }}" raid.2 raid.3
 
 '''
 reg_partitions = f'''
 ignoredisk --only-use={d1}
-bootloader --location=mbr --boot-drive={d1} --driveorder={d1}  --iscrypted --password={{ grub_pw }}
+bootloader --location=mbr --boot-drive={d1} --driveorder={d1}  --iscrypted --password="{{ grub_pw }}"
 clearpart --all --initlabel --drives={d1}
 
 part /boot --fstype=xfs --size=2048 --ondisk={d1} --label=BOOT
 part /boot/efi --fstype=efi --size=512  --ondisk={d1} --label=EFI
-part pv.1 --fstype=lvmpv --encrypted --passphrase={{ luks_pw }}
+part pv.1 --fstype=lvmpv --encrypted --passphrase="{{ luks_pw }}"
 
 '''
 
@@ -79,9 +79,9 @@ logvol swap --vgname={{ vgname }} --name=swap --fstype=swap --size=8 --fsoptions
 
 auto_partitions = f'''
 ignoredisk --only-use={d1}
-bootloader --location=mbr --boot-drive={d1} --driveorder={d1}  --iscrypted --password={{ grub_pw }}
+bootloader --location=mbr --boot-drive={d1} --driveorder={d1}  --iscrypted --password="{{ grub_pw }}"
 clearpart --all --initlabel --drives={d1}
-autopart --fstype=xfs --encrypted --passphrase={{ luks_pw }}
+autopart --fstype=xfs --encrypted --passphrase="{{ luks_pw }}"
 
 '''
 
@@ -104,11 +104,15 @@ keyboard us
 lang en_US.UTF-8
 selinux --enforcing
 
+{% if network.bootproto == 'static' %}
+network --bootproto={{ network.bootproto }} --hostname={{ network.hostname }} --ip={{ network.ip }} --netmask={{ network.netmask }} --activate --onboot=on
+{% else %}
 network --bootproto=dhcp --onboot=on --activate
+{% endif %}
 
-rootpw --allow-ssh --iscrypted {{ root_pw }}
+rootpw --allow-ssh --iscrypted "{{ root_pw }}"
 user --name=ansible
-sshkey --username=ansible {{ ansible_key }}
+sshkey --username=ansible "{{ ansible_key }}"
 
 timezone {{ timezone }} --utc --no
 zerombr

@@ -1,5 +1,7 @@
 #!ipxe
 
+set base-url http://repos-prod-az/release
+
 :main
 menu --name main Choose an Operating System or Utility
 item --menu main rocky Rocky Linux
@@ -23,6 +25,7 @@ item --menu rhel back Go back to main menu
 choose --menu rhel target && goto ${target}
 
 :rhel7
+set resource-path ${base-url}/rhel/7
 menu --name rhel7 Choose a RHEL 7 Boot Option
 item --menu rhel7 workstation-el7 RHEL 7 Workstation
 item --menu rhel7 server-el7 RHEL 7 Server Product
@@ -31,6 +34,39 @@ item --menu rhel7 minimal-el7 RHEL 7 Minimal
 item --menu rhel7 custom-el7 RHEL 7 Custom
 item --menu rhel7 back Go back to main menu
 choose --menu rhel7 target && goto ${target}
+
+:workstation-el7
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhel7_workstation.ks
+initrd ${resource-path}/initrd.img
+boot
+
+:server-el7
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhel7_server.ks
+initrd ${resource-path}/initrd.img
+boot
+
+:servergui-el7
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhel7_server_gui.ks
+initrd ${resource-path}/initrd.img
+boot
+
+:minimal-el7
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhel7_minimal.ks
+initrd ${resource-path}/initrd.img
+boot
+
+:custom-el7
+form --name el7-form Define Custom RHEL7 Boot Parameters
+item repo-url Repo URL
+item ks-url Kickstart URL
+item vmlinuz-url Compressed Kernel Exe (vmlinuz) URL
+item initrd-url Initial Ramdisk Image (initrd) URL
+present
+
+kernel ${vmlinuz-url} inst.repo=${repo-url} inst.ks=${ks-url}
+initrd ${initrd-url}
+boot
+
 
 :rhel8
 menu --name rhel8 Choose a RHEL 8 Boot Option
@@ -42,6 +78,16 @@ item --menu rhel8 custom-el8 RHEL 8 Custom
 item --menu rhel8 back Go back to main menu
 choose --menu rhel8 target && goto ${target}
 
+:workstation-el8
+
+:server-el8
+
+:servergui-el8
+
+:minimal-el8
+
+:custom-el8
+
 :rhel9
 menu --name rhel9 Choose a RHEL 9 Boot Option
 item --menu rhel9 workstation-el9 RHEL 9 Workstation
@@ -51,6 +97,16 @@ item --menu rhel9 minimal-el9 RHEL 9 Minimal
 item --menu rhel9 custom-el19 RHEL 9 Custom
 item --menu rhel9 back Go back to main menu
 choose --menu rhel9 target && goto ${target}
+
+:workstation-el9
+
+:server-el9
+
+:servergui-el9
+
+:minimal-el9
+
+:custom-el9
 
 :rhel10
 menu --name rhel10 Choose a RHEL 10 Boot Option
@@ -62,6 +118,15 @@ item --menu rhel10 custom-el10 RHEL 10 Custom
 item --menu rhel10 back Go back to main menu
 choose --menu rhel10 target && goto ${target}
 
+:workstation-el10
+
+:server-el10
+
+:servergui-el10
+
+:minimal-el10
+
+:custom-el10
 
 # Rocky submenu options
 :rocky
@@ -82,6 +147,16 @@ item --menu rocky8 custom-rl8 Rocky 8 Custom
 item --menu rocky8 back Go back to main menu
 choose --menu rocky8 target && goto ${target}
 
+:workstation-rl8
+
+:server-rl8
+
+:servergui-rl8
+
+:minimal-rl8
+
+:custom-rl8
+
 :rocky9
 menu --name rocky9 Choose a Rocky 9 Boot Option
 item --menu rocky9 workstation-rl9 Rocky 9 Workstation
@@ -91,6 +166,16 @@ item --menu rocky9 minimal-rl9 Rocky 9 Minimal
 item --menu rocky9 custom-rl9 Rocky 9 Custom
 item --menu rocky9 back Go back to main menu
 choose --menu rocky9 target && goto ${target}
+
+:workstation-rl9
+
+:server-rl9
+
+:servergui-rl9
+
+:minimal-rl9
+
+:custom-rl9
 
 :rocky10
 menu --name rocky10 Choose a Rocky 10 Boot Option
@@ -102,6 +187,15 @@ item --menu rocky10 custom-rl10 Rocky 10 Custom
 item --menu rocky10 back Go back to main menu
 choose --menu rocky10 target && goto ${target}
 
+:workstation-rl9
+
+:server-rl9
+
+:servergui-rl9
+
+:minimal-rl9
+
+:custom-rl9
 
 # Windows submenu options #TODO
 :windows

@@ -56,7 +56,7 @@ initrd ${resource-path}/initrd.img
 boot
 
 :custom-el7
-form --name el7-form Define Custom RHEL7 Boot Parameters
+form --name el7-form Define Custom RHEL 7 Boot Parameters
 item repo-url Repo URL
 item ks-url Kickstart URL
 item vmlinuz-url Compressed Kernel Exe (vmlinuz) URL
@@ -67,8 +67,8 @@ kernel ${vmlinuz-url} inst.repo=${repo-url} inst.ks=${ks-url}
 initrd ${initrd-url}
 boot
 
-
 :rhel8
+set resource-path ${base-url}/rhel/8
 menu --name rhel8 Choose a RHEL 8 Boot Option
 item --menu rhel8 workstation-el8 RHEL 8 Workstation
 item --menu rhel8 server-el8 RHEL 8 Server Product
@@ -79,16 +79,39 @@ item --menu rhel8 back Go back to main menu
 choose --menu rhel8 target && goto ${target}
 
 :workstation-el8
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhel8_workstation.ks
+initrd ${resource-path}/initrd.img
+boot
 
 :server-el8
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhel8_server.ks
+initrd ${resource-path}/initrd.img
+boot
 
 :servergui-el8
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhel8_server_gui.ks
+initrd ${resource-path}/initrd.img
+boot
 
 :minimal-el8
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhel8_minimal.ks
+initrd ${resource-path}/initrd.img
+boot
 
 :custom-el8
+form --name el8-form Define Custom RHEL 8 Boot Parameters
+item repo-url Repo URL
+item ks-url Kickstart URL
+item vmlinuz-url Compressed Kernel Exe (vmlinuz) URL
+item initrd-url Initial Ramdisk Image (initrd) URL
+present
+
+kernel ${vmlinuz-url} inst.repo=${repo-url} inst.ks=${ks-url}
+initrd ${initrd-url}
+boot
 
 :rhel9
+set resource-path ${base-url}/rhel/9
 menu --name rhel9 Choose a RHEL 9 Boot Option
 item --menu rhel9 workstation-el9 RHEL 9 Workstation
 item --menu rhel9 server-el9 RHEL 9 Server Product
@@ -99,16 +122,39 @@ item --menu rhel9 back Go back to main menu
 choose --menu rhel9 target && goto ${target}
 
 :workstation-el9
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhel9_workstation.ks
+initrd ${resource-path}/initrd.img
+boot
 
 :server-el9
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhel9_server.ks
+initrd ${resource-path}/initrd.img
+boot
 
 :servergui-el9
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhel9_server_gui.ks
+initrd ${resource-path}/initrd.img
+boot
 
 :minimal-el9
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhel9_minimal.ks
+initrd ${resource-path}/initrd.img
+boot
 
 :custom-el9
+form --name el9-form Define Custom RHEL 9 Boot Parameters
+item repo-url Repo URL
+item ks-url Kickstart URL
+item vmlinuz-url Compressed Kernel Exe (vmlinuz) URL
+item initrd-url Initial Ramdisk Image (initrd) URL
+present
+
+kernel ${vmlinuz-url} inst.repo=${repo-url} inst.ks=${ks-url}
+initrd ${initrd-url}
+boot
 
 :rhel10
+set resource-path ${base-url}/rhel/10
 menu --name rhel10 Choose a RHEL 10 Boot Option
 item --menu rhel10 workstation-el10 RHEL 10 Workstation
 item --menu rhel10 server-el10 RHEL 10 Server Product
@@ -119,16 +165,38 @@ item --menu rhel10 back Go back to main menu
 choose --menu rhel10 target && goto ${target}
 
 :workstation-el10
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhel10_workstation.ks
+initrd ${resource-path}/initrd.img
+boot
 
 :server-el10
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhel10_server.ks
+initrd ${resource-path}/initrd.img
+boot
 
 :servergui-el10
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhel10_server_gui.ks
+initrd ${resource-path}/initrd.img
+boot
 
 :minimal-el10
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhel10_minimal.ks
+initrd ${resource-path}/initrd.img
+boot
 
 :custom-el10
+form --name el10-form Define Custom RHEL 10 Boot Parameters
+item --form el10-form repo-url Repo URL
+item --form el10-form ks-url Kickstart URL
+item --form el10-form vmlinuz-url Compressed Kernel Exe (vmlinuz) URL
+item --form el10-form initrd-url Initial Ramdisk Image (initrd) URL
+present
 
-# Rocky submenu options
+kernel ${vmlinuz-url} inst.repo=${repo-url} inst.ks=${ks-url}
+initrd ${initrd-url}
+boot
+
+### ROCKY ###
 :rocky
 menu --name rocky Choose Rocky Major Version
 item --menu rocky rocky8 Rocky Linux 8
@@ -138,6 +206,7 @@ item --menu rocky back Go back to main menu
 choose --menu rocky target && goto ${target}
 
 :rocky8
+set resource-path ${base-url}/rocky/8
 menu --name rocky8 Choose a Rocky 8 Boot Option
 item --menu rocky8 workstation-rl8 Rocky 8 Workstation
 item --menu rocky8 server-rl8 Rocky 8 Server Product
@@ -148,16 +217,39 @@ item --menu rocky8 back Go back to main menu
 choose --menu rocky8 target && goto ${target}
 
 :workstation-rl8
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhrl8_workstation.ks
+initrd ${resource-path}/initrd.img
+boot
 
 :server-rl8
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhrl8_server.ks
+initrd ${resource-path}/initrd.img
+boot
 
 :servergui-rl8
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhrl8_server_gui.ks
+initrd ${resource-path}/initrd.img
+boot
 
 :minimal-rl8
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhrl8_minimal.ks
+initrd ${resource-path}/initrd.img
+boot
 
 :custom-rl8
+form --name rl8-form Define Custom Rocky 8 Boot Parameters
+item --form rl8-form repo-url Repo URL
+item --form rl8-form ks-url Kickstart URL
+item --form rl8-form vmlinuz-url Compressed Kernel Exe (vmlinuz) URL
+item --form rl8-form initrd-url Initial Ramdisk Image (initrd) URL
+present
+
+kernel ${vmlinuz-url} inst.repo=${repo-url} inst.ks=${ks-url}
+initrd ${initrd-url}
+boot
 
 :rocky9
+set resource-path ${base-url}/rocky/9
 menu --name rocky9 Choose a Rocky 9 Boot Option
 item --menu rocky9 workstation-rl9 Rocky 9 Workstation
 item --menu rocky9 server-rl9 Rocky 9 Server Product
@@ -168,16 +260,39 @@ item --menu rocky9 back Go back to main menu
 choose --menu rocky9 target && goto ${target}
 
 :workstation-rl9
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhrl9_workstation.ks
+initrd ${resource-path}/initrd.img
+boot
 
 :server-rl9
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhrl9_server.ks
+initrd ${resource-path}/initrd.img
+boot
 
 :servergui-rl9
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhrl9_server_gui.ks
+initrd ${resource-path}/initrd.img
+boot
 
 :minimal-rl9
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhrl9_minimal.ks
+initrd ${resource-path}/initrd.img
+boot
 
 :custom-rl9
+form --name rl9-form Define Custom Rocky 9 Boot Parameters
+item --form rl9-form repo-url Repo URL
+item --form rl9-form ks-url Kickstart URL
+item --form rl9-form vmlinuz-url Compressed Kernel Exe (vmlinuz) URL
+item --form rl9-form initrd-url Initial Ramdisk Image (initrd) URL
+present
+
+kernel ${vmlinuz-url} inst.repo=${repo-url} inst.ks=${ks-url}
+initrd ${initrd-url}
+boot
 
 :rocky10
+set resource-path ${base-url}/rocky/10
 menu --name rocky10 Choose a Rocky 10 Boot Option
 item --menu rocky10 workstation-rl10 Rocky 10 Workstation
 item --menu rocky10 server-rl10 Rocky 10 Server Product
@@ -187,15 +302,37 @@ item --menu rocky10 custom-rl10 Rocky 10 Custom
 item --menu rocky10 back Go back to main menu
 choose --menu rocky10 target && goto ${target}
 
-:workstation-rl9
+:workstation-rl10
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhrl10_workstation.ks
+initrd ${resource-path}/initrd.img
+boot
 
-:server-rl9
+:server-rl10
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhrl10_server.ks
+initrd ${resource-path}/initrd.img
+boot
 
-:servergui-rl9
+:servergui-rl10
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhrl10_server_gui.ks
+initrd ${resource-path}/initrd.img
+boot
 
-:minimal-rl9
+:minimal-rl10
+kernel ${resource-path}/vmlinuz inst.repo=${resource-path}/BaseOS/x86_64 inst.ks=${resource-path}/kickstarts/rhrl10_minimal.ks
+initrd ${resource-path}/initrd.img
+boot
 
-:custom-rl9
+:custom-rl10
+form --name rl10-form Define Custom Rocky 10 Boot Parameters
+item --form rl10-form repo-url Repo URL
+item --form rl10-form ks-url Kickstart URL
+item --form rl10-form vmlinuz-url Compressed Kernel Exe (vmlinuz) URL
+item --form rl10-form initrd-url Initial Ramdisk Image (initrd) URL
+present
+
+kernel ${vmlinuz-url} inst.repo=${repo-url} inst.ks=${ks-url}
+initrd ${initrd-url}
+boot
 
 # Windows submenu options #TODO
 :windows

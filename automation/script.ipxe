@@ -1,0 +1,168 @@
+#!ipxe
+
+:main
+menu --name main Choose an Operating System or Utility
+item --menu main rocky Rocky Linux
+item --menu main rhel Red Hat Enterprise Linux
+item --menu main windows Mircosoft Windows
+item --menu main utils Utilities
+item --menu main reboot Reboot
+item --menu main poweroff Poweroff
+item --menu main exit Exit
+choose --menu main --default exit --timeout 60000 target && goto ${taget}
+
+
+# RHEL submenu options
+:rhel
+menu --name rhel Choose RHEL Major Version
+item --menu rhel rhel7 Red Hat Enterprise Linux 7
+item --menu rhel rhel8 Red Hat Enterprise Linux 8
+item --menu rhel rhel9 Red Hat Enterprise Linux 9
+item --menu rhel rhel10 Red Hat Enterprise Linux 10
+item --menu rhel back Go back to main menu
+choose --menu rhel target && goto ${target}
+
+:rhel7
+menu --name rhel7 Choose a RHEL 7 Boot Option
+item --menu rhel7 workstation-el7 RHEL 7 Workstation
+item --menu rhel7 server-el7 RHEL 7 Server Product
+item --menu rhel7 servergui-el7 RHEL 7 Server with GUI
+item --menu rhel7 minimal-el7 RHEL 7 Minimal
+item --menu rhel7 custom-el7 RHEL 7 Custom
+item --menu rhel7 back Go back to main menu
+choose --menu rhel7 target && goto ${target}
+
+:rhel8
+menu --name rhel8 Choose a RHEL 8 Boot Option
+item --menu rhel8 workstation-el8 RHEL 8 Workstation
+item --menu rhel8 server-el8 RHEL 8 Server Product
+item --menu rhel8 servergui-el8 RHEL 8 Server with GUI
+item --menu rhel8 minimal-el8 RHEL 8 Minimal
+item --menu rhel8 custom-el8 RHEL 8 Custom
+item --menu rhel8 back Go back to main menu
+choose --menu rhel8 target && goto ${target}
+
+:rhel9
+menu --name rhel9 Choose a RHEL 9 Boot Option
+item --menu rhel9 workstation-el9 RHEL 9 Workstation
+item --menu rhel9 server-el9 RHEL 9 Server Product
+item --menu rhel9 servergui-el9 RHEL 9 Server with GUI
+item --menu rhel9 minimal-el9 RHEL 9 Minimal
+item --menu rhel9 custom-el19 RHEL 9 Custom
+item --menu rhel9 back Go back to main menu
+choose --menu rhel9 target && goto ${target}
+
+:rhel10
+menu --name rhel10 Choose a RHEL 10 Boot Option
+item --menu rhel10 workstation-el10 RHEL 10 Workstation
+item --menu rhel10 server-el10 RHEL 10 Server Product
+item --menu rhel10 servergui-el10 RHEL 10 Server with GUI
+item --menu rhel10 minimal-el10 RHEL 10 Minimal
+item --menu rhel10 custom-el10 RHEL 10 Custom
+item --menu rhel10 back Go back to main menu
+choose --menu rhel10 target && goto ${target}
+
+
+# Rocky submenu options
+:rocky
+menu --name rocky Choose Rocky Major Version
+item --menu rocky rocky8 Rocky Linux 8
+item --menu rocky rocky9 Rocky Linux 9
+item --menu rocky rocky10 Rocky Linux 10
+item --menu rocky back Go back to main menu
+choose --menu rocky target && goto ${target}
+
+:rocky8
+menu --name rocky8 Choose a Rocky 8 Boot Option
+item --menu rocky8 workstation-rl8 Rocky 8 Workstation
+item --menu rocky8 server-rl8 Rocky 8 Server Product
+item --menu rocky8 servergui-rl8 Rocky 8 Server with GUI
+item --menu rocky8 minimal-rl8 Rocky 8 Minimal
+item --menu rocky8 custom-rl8 Rocky 8 Custom
+item --menu rocky8 back Go back to main menu
+choose --menu rocky8 target && goto ${target}
+
+:rocky9
+menu --name rocky9 Choose a Rocky 9 Boot Option
+item --menu rocky9 workstation-rl9 Rocky 9 Workstation
+item --menu rocky9 server-rl9 Rocky 9 Server Product
+item --menu rocky9 servergui-rl9 Rocky 9 Server with GUI
+item --menu rocky9 minimal-rl9 Rocky 9 Minimal
+item --menu rocky9 custom-rl9 Rocky 9 Custom
+item --menu rocky9 back Go back to main menu
+choose --menu rocky9 target && goto ${target}
+
+:rocky10
+menu --name rocky10 Choose a Rocky 10 Boot Option
+item --menu rocky10 workstation-rl10 Rocky 10 Workstation
+item --menu rocky10 server-rl10 Rocky 10 Server Product
+item --menu rocky10 servergui-rl10 Rocky 10 Server with GUI
+item --menu rocky10 minimal-rl10 Rocky 10 Minimal
+item --menu rocky10 custom-rl10 Rocky 10 Custom
+item --menu rocky10 back Go back to main menu
+choose --menu rocky10 target && goto ${target}
+
+
+# Windows submenu options #TODO
+:windows
+menu --name windows Choose Windows Version
+item --menu windows win11 Windows 11
+item --menu windows win2016 Windows Server 2016
+item --menu windows win2019 Windows Server 2019
+item --menu windows win2022 Windows Server 2022
+item --menu windows win2025 Windows Server 2025
+item --menu windows back Go back to main menu
+choose --menu windows target && goto ${target}
+
+:win11
+menu --name win11 Choose a Windows 11 Boot Option
+item --menu win11 back Go back to main menu
+choose --menu win11 target && goto ${target}
+
+:win2016
+menu --name win2016 Choose a Windows 2016 Boot Option
+item --menu win2016 back Go back to main menu
+choose --menu win2016 target && goto ${target}
+
+:win2019
+menu --name win2019 Choose a Windows 2019 Boot Option
+item --menu win2019 back Go back to main menu
+choose --menu win2019 target && goto ${target}
+
+:win2022
+menu --name win2022 Choose a Windows 2022 Boot Option
+item --menu win2022 back Go back to main menu
+choose --menu win2022 target && goto ${target}
+
+:win2025
+menu --name win2025 Choose a Windows 2025 Boot Option
+item --menu win2025 back Go back to main menu
+choose --menu win2025 target && goto ${target}
+
+
+# Utility submenu options
+:utils
+menu --name utils Choose a Utility
+item --menu utils shell iPXE shell
+item --menu utils config iPXE configuration tool
+item --menu utils back Go back to main menu
+choose --menu windows target && goto ${target}
+
+:back
+goto main
+
+:config
+config
+
+:shell
+shell
+
+:reboot
+reboot
+
+:poweroff
+poweroff
+
+:exit
+exit
+

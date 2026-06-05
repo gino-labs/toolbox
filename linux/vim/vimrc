@@ -1,9 +1,11 @@
-" Core
-syntax on
+" Core syntax
 colorscheme industry
 set encoding=utf-8
 set number
 set numberwidth=1
+set timeout
+set timeoutlen=500
+inoremap jh <Esc>
 
 " Defaults
 set tabstop=4

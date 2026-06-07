@@ -6,6 +6,25 @@ set numberwidth=1
 set timeout
 set timeoutlen=500
 inoremap jh <Esc>
+nnoremap j h
+nnoremap k j
+nnoremap l k
+nnoremap ; l
+
+vnoremap j h
+vnoremap k j
+vnoremap l k
+vnoremap ; l
+
+nnoremap <M-;> ;
+vnoremap <M-;> ;
+onoremap <M-;> ;
+
+nnoremap <Esc>k <C-f>
+nnoremap <Esc>l <C-b>
+
+vnoremap <Esc>k <C-f>
+vnoremap <Esc>l <C-b>
 
 " Defaults
 set tabstop=4

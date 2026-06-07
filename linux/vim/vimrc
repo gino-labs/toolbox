@@ -5,6 +5,8 @@ set number
 set numberwidth=1
 set timeout
 set timeoutlen=500
+
+" Navigation keybindings
 inoremap jh <Esc>
 nnoremap j h
 nnoremap k j
@@ -25,6 +27,11 @@ nnoremap <Esc>l <C-b>
 
 vnoremap <Esc>k <C-f>
 vnoremap <Esc>l <C-b>
+
+nnoremap <C-w>j <C-w>h
+nnoremap <C-w>k <C-w>j
+nnoremap <C-w>l <C-w>k
+nnoremap <C-w>; <C-w>l
 
 " Defaults
 set tabstop=4

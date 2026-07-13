@@ -74,9 +74,11 @@ HIDDEN=8
 STRIKETHRU=9
 
 # Prompt Color Controls
-case "$(roll_rand 1 2)" in
+case "$(roll_rand 1 2 3 4)" in
   1) C1=203 && C2=37 ;;
   2) C1=29 && C2=100 ;;
+  3) C1=223 && C2=80 ;;
+  4) C1=42 && C2=220 ;;
   *) C1=59 && C2=59 ;;
 esac
 

@@ -13,8 +13,5 @@ alias lls="ls -laZ"
 alias apb="ansible-playbook"
 alias adoc="ansible-doc"
  
-# Python
-alias python="/usr/bin/env python3"
-alias py="/usr/bin/env python3"
-alias pip="/usr/bin/env python3 -m pip"
-  
+# System
+alias sys-verify="systemd-analyze verify"  

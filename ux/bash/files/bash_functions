@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
 
+# NOTE: Bash function names with `-` are not portable to posix shells like /bin/sh
+
 # Git
 gitm() {
     git add -A
     git commit -m "$1"
     git push
+}
+
+# Monitor Brightness
+set-brightness() {
+  sudo ddcutil --display 1 setvcp 10 "$1"
+  sudo ddcutil --display 2 setvcp 10 "$1"
 }
 
 manhtml() {

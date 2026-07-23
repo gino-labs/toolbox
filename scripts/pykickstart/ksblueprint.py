@@ -291,6 +291,16 @@ def normalize_openscap(cfg, warnings):
         return None
     profile = resolve_stig_alias(profile, cfg, warnings)
 
+    stig_profile_ids = {e["profile_id"] for e in STIG_CATALOG.values()}
+    if profile in stig_profile_ids and not cfg.get("fips"):
+        warnings.append(
+            "openscap profile resolves to a DISA STIG profile, which expects the systemwide "
+            "crypto policy to read 'FIPS:STIG' - but 'fips: true' is not set. Without it, "
+            "the STIG profile's own remediation may flip the crypto-policy string to "
+            "FIPS:STIG without the system ever having actually been placed in FIPS mode at "
+            "install time (which can't be fixed after the fact). Add 'fips: true' alongside "
+            "this profile.")
+
     content_type = raw.get("content_type", "scap-security-guide")
     datastream = raw.get("datastream")
     if content_type == "datastream" and not datastream:

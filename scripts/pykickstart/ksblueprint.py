@@ -194,9 +194,62 @@ def normalize_packages(raw):
 
 
 # ---------------------------------------------------------------------------
+# OpenSCAP compliance - can be applied two ways, and both can be requested
+# at once:
+#   * kickstart  -> %addon org_fedora_oscap, enforced live by anaconda during
+#                   install (partition/package constraints + remediation).
+#                   Works regardless of install_source.type.
+#   * blueprint  -> [customizations.openscap], baked into the payload that
+#                   composer builds. Meaningless for install_source.type=url,
+#                   since composer isn't building that payload (same caveat
+#                   as build_sources() already gives for 'repos').
+# ---------------------------------------------------------------------------
+def normalize_openscap(cfg, warnings):
+    raw = cfg.get("openscap")
+    if not raw:
+        return None
+
+    profile = raw.get("profile")
+    if not profile:
+        warnings.append("openscap config given but no 'profile' set - skipping OpenSCAP.")
+        return None
+
+    content_type = raw.get("content_type", "scap-security-guide")
+    datastream = raw.get("datastream")
+    if content_type == "datastream" and not datastream:
+        warnings.append("openscap content_type is 'datastream' but no 'datastream' "
+                        "path/url given - skipping OpenSCAP.")
+        return None
+
+    src_type = (cfg.get("install_source") or {}).get("type")
+    mode = raw.get("mode")
+    if not mode:
+        mode = "kickstart" if src_type == "url" else "both"
+        if src_type == "url":
+            warnings.append("install_source.type is 'url' - OpenSCAP will only be applied "
+                            "via the kickstart %addon; composer isn't building this payload, "
+                            "so [customizations.openscap] would have no effect (same caveat "
+                            "as 'repos' in url mode).")
+    elif mode in ("blueprint", "both") and src_type == "url":
+        warnings.append("openscap.mode is '%s' but install_source.type is 'url' - the "
+                        "blueprint's [customizations.openscap] will NOT be applied (composer "
+                        "isn't building this payload). Consider mode: kickstart." % mode)
+
+    return {
+        "content_type": content_type,
+        "profile": profile,
+        "datastream": datastream,
+        "datastream_id": raw.get("datastream_id"),
+        "xccdf_id": raw.get("xccdf_id"),
+        "tailoring": raw.get("tailoring"),
+        "mode": mode,
+    }
+
+
+# ---------------------------------------------------------------------------
 # blueprint (TOML) builder
 # ---------------------------------------------------------------------------
-def build_customizations(cfg):
+def build_customizations(cfg, oscap=None):
     scalars, sub = [], []   # sub = list of (header, [lines])
 
     if cfg.get("hostname"):
@@ -242,6 +295,12 @@ def build_customizations(cfg):
             svc_lines.append(kv("disabled", svc["disabled"]))
         sub.append(("[customizations.services]", svc_lines))
 
+    if oscap and oscap["mode"] in ("blueprint", "both"):
+        oscap_lines = [kv("profile_id", oscap["profile"])]
+        if oscap["content_type"] == "datastream" and oscap.get("datastream"):
+            oscap_lines.append(kv("datastream", oscap["datastream"]))
+        sub.append(("[customizations.openscap]", oscap_lines))
+
     block = []
     if scalars:
         block += ["[customizations]"] + scalars + [""]
@@ -250,7 +309,7 @@ def build_customizations(cfg):
     return block
 
 
-def build_blueprint(cfg, embedded_ks=None):
+def build_blueprint(cfg, embedded_ks=None, oscap=None):
     pkgs, at_groups = normalize_packages(cfg.get("packages"))
     groups = at_groups + list(cfg.get("groups") or [])
 
@@ -268,7 +327,7 @@ def build_blueprint(cfg, embedded_ks=None):
     for g in groups:
         out += ["[[groups]]", kv("name", g), ""]
 
-    out += build_customizations(cfg)
+    out += build_customizations(cfg, oscap)
     if embedded_ks is not None:
         out += build_installer_kickstart(embedded_ks)
     return "\n".join(out).rstrip() + "\n"
@@ -383,7 +442,34 @@ def ks_identity(cfg):
     return out
 
 
-def build_kickstart(cfg, pre_text, warnings):
+def ks_openscap_addon(oscap):
+    if not oscap or oscap["mode"] not in ("kickstart", "both"):
+        return []
+    lines = [
+        "# OpenSCAP compliance - enforced live by anaconda during install.",
+        "# NOTE: some profiles mandate their own partition/mount rules (e.g. a",
+        "# separate /tmp, /var, /var/log). Cross-check those against the",
+        "# %pre-generated layout included below if the install fails compliance.",
+        "%addon org_fedora_oscap",
+    ]
+    if oscap["content_type"] == "scap-security-guide":
+        lines.append("    content-type = scap-security-guide")
+    else:
+        lines.append("    content-type = datastream")
+        lines.append("    content-url = %s" % oscap["datastream"])
+        if oscap.get("datastream_id"):
+            lines.append("    datastream-id = %s" % oscap["datastream_id"])
+        if oscap.get("xccdf_id"):
+            lines.append("    xccdf-id = %s" % oscap["xccdf_id"])
+    lines.append("    profile = %s" % oscap["profile"])
+    if oscap.get("tailoring"):
+        lines.append("    tailoring-path = %s" % oscap["tailoring"])
+    lines.append("%end")
+    lines.append("")
+    return lines
+
+
+def build_kickstart(cfg, pre_text, warnings, oscap=None):
     name = cfg["name"]
     ks = [
         "# Kickstart generated by ksblueprint - pairs with blueprint '%s.toml'" % name,
@@ -401,6 +487,7 @@ def build_kickstart(cfg, pre_text, warnings):
     ks += ks_network(cfg)
     ks.append("firstboot --disable")
     ks.append("")
+    ks += ks_openscap_addon(oscap)
     ks += ks_identity(cfg)
     ks.append("")
     ks.append("# Disk layout is generated at run time by the %pre script below,")
@@ -518,17 +605,18 @@ def main(argv=None):
 
     warnings = []
     validate(cfg, warnings)
+    oscap = normalize_openscap(cfg, warnings)
 
     pre_text = None
     if args.pre_file:
         with open(args.pre_file) as fh:
             pre_text = fh.read()
 
-    blueprint = build_blueprint(cfg)
-    kickstart = build_kickstart(cfg, pre_text, warnings)
+    blueprint = build_blueprint(cfg, oscap=oscap)
+    kickstart = build_kickstart(cfg, pre_text, warnings, oscap=oscap)
     embed = bool(cfg.get("embed_kickstart") or args.embed_kickstart)
     if embed:
-        blueprint = build_blueprint(cfg, embedded_ks=kickstart)
+        blueprint = build_blueprint(cfg, embedded_ks=kickstart, oscap=oscap)
     sources = build_sources(cfg, warnings)
 
     os.makedirs(args.outdir, exist_ok=True)

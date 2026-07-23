@@ -91,6 +91,23 @@ users:
 
 reboot: true
 
+# ---- OpenSCAP compliance (optional) ----
+# Applied two ways at once by default:
+#   * kickstart %addon org_fedora_oscap -> anaconda enforces it live during
+#     install (works no matter what install_source.type is).
+#   * blueprint [customizations.openscap] -> baked into the composer-built
+#     payload (skipped automatically - with a warning - if install_source.type
+#     is 'url', since composer isn't building that payload).
+# openscap:
+#   profile: xccdf_org.ssgproject.content_profile_cis   # required
+#   # content_type: scap-security-guide   # default; built-in per-distro content
+#   # content_type: datastream            # use a custom datastream instead:
+#   # datastream: /path/or/url/to/ds.xml
+#   # datastream_id: scap_org.open-scap_datastream_from_xccdf_...
+#   # xccdf_id: scap_org.open-scap_cref_...-xccdf.xml
+#   # tailoring: /path/to/tailoring.xml   # kickstart %addon only
+#   # mode: both                          # kickstart | blueprint | both (default inferred)
+
 post_script: |
   # runs in the installed system (chroot) at the end of install
   echo "provisioned by ksblueprint" > /etc/ksblueprint-stamp

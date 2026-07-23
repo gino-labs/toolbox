@@ -14,4 +14,9 @@ alias apb="ansible-playbook"
 alias adoc="ansible-doc"
  
 # System
-alias sys-verify="systemd-analyze verify"  
+alias sys-verify="systemd-analyze verify" 
+
+# OSBuild Composer
+alias compc="composer-cli"
+alias compcb="composer-cli blueprints"
+alias compcc="composer-cli compose"

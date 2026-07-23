@@ -7,6 +7,9 @@
 #   * Two candidates of EXACTLY equal size  -> RAID1 mirror across both.
 #   * Otherwise                              -> smallest matched disk, no RAID.
 #   * Zero candidates                        -> abort (via --erroronfail).
+#   * All of root/home/scratch/var/tmp/log/etc. are FIXED-size logvols; the
+#     remaining VG capacity (often most of the disk on a storage-role box)
+#     is soaked up by a --grow logvol at /srv/storage.
 #
 # The main kickstart pulls the result in with:   %include /tmp/diskpart.ks
 # ---------------------------------------------------------------------------
@@ -17,6 +20,12 @@ set -uo pipefail          # -e is intentionally OFF: the filter loop below
 MIN_BYTES=$((500 * 1024 ** 3))     # 500 GiB  hard lower bound
 MAX_BYTES=$((2   * 1024 ** 4))     # 2   TiB  hard upper bound
 INCLUDE=/tmp/diskpart.ks
+
+# LUKS passphrase for the encrypted LVM physical volume (root/home/var/etc.).
+# CHANGE THIS before building - it is baked in plaintext wherever this %pre
+# script ends up (the generated kickstart, and the blueprint's TOML if
+# embed_kickstart is used). See the caution note at the end of this reply.
+LUKS_PASSPHRASE="REPLACE_WITH_A_REAL_PASSPHRASE"
 
 log(){ echo "[disk-pre] $*"; }
 
@@ -34,6 +43,7 @@ logvol /var/tmp         --vgname=os --name=vartmp  --fstype=xfs  --size=10240
 logvol /var/log         --vgname=os --name=varlog  --fstype=xfs  --size=10240
 logvol /var/log/audit   --vgname=os --name=audit   --fstype=xfs  --size=10240
 logvol /var/log/journal --vgname=os --name=journal --fstype=xfs  --size=10240
+logvol /srv/storage     --vgname=os --name=storage --fstype=xfs  --grow --size=1
 logvol swap             --vgname=os --name=swap    --fstype=swap --recommended
 EOF
 }
@@ -47,7 +57,7 @@ zerombr
 clearpart --all --initlabel --drives=$d
 part /boot/efi --fstype=efi   --size=512  --ondisk=$d --label=ESP
 part /boot     --fstype=xfs   --size=2048 --ondisk=$d --label=BOOT
-part pv.01     --fstype=lvmpv --grow --size=1 --ondisk=$d
+part pv.01     --fstype=lvmpv --grow --size=1 --ondisk=$d --encrypted --passphrase="$LUKS_PASSPHRASE"
 EOF
   emit_lvs
   echo "bootloader --boot-drive=$d" >> "$INCLUDE"
@@ -66,9 +76,9 @@ part raid.boot1 --fstype=raid --size=2048 --ondisk=$a
 part raid.boot2 --fstype=raid --size=2048 --ondisk=$b
 part raid.pv1   --fstype=raid --grow --size=1 --ondisk=$a
 part raid.pv2   --fstype=raid --grow --size=1 --ondisk=$b
-raid /boot/efi --fstype=efi   --level=RAID1 --device=md_efi  raid.efi1 raid.efi2
-raid /boot     --fstype=xfs   --level=RAID1 --device=md_boot raid.boot1 raid.boot2
-raid pv.01     --fstype=lvmpv --level=RAID1 --device=md_pv   raid.pv1 raid.pv2
+raid /boot/efi --fstype=efi   --level=1 --device=md0 raid.efi1 raid.efi2
+raid /boot     --fstype=xfs   --level=1 --device=md1 raid.boot1 raid.boot2
+raid pv.01     --fstype=lvmpv --level=1 --device=md2 --encrypted --passphrase="$LUKS_PASSPHRASE" raid.pv1 raid.pv2
 EOF
   emit_lvs
   echo "bootloader --boot-drive=$a" >> "$INCLUDE"

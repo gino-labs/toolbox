@@ -53,11 +53,6 @@ def lv_lines():
     for mount, name, size in LVS:
         out.append("logvol %-22s --vgname=os --name=%-8s --fstype=xfs  --size=%d"
                    % (mount, name, size))
-    # Everything above is fixed-size; without a --grow logvol the rest of the
-    # VG (often most of the disk, on a storage-role box) is left as unused
-    # free space. This one soaks up whatever's left.
-    out.append("logvol /srv/storage           --vgname=os --name=storage  "
-               "--fstype=xfs  --grow --size=1")
     out.append("logvol swap                   --vgname=os --name=swap     "
                "--fstype=swap --recommended")
     return out

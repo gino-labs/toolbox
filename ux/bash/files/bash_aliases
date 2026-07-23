@@ -17,6 +17,5 @@ alias adoc="ansible-doc"
 alias sys-verify="systemd-analyze verify" 
 
 # OSBuild Composer
-alias compc="composer-cli"
-alias compcb="composer-cli blueprints"
-alias compcc="composer-cli compose"
+alias ccli="composer-cli"
+complete -F _composer_cli ccli

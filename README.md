@@ -1,12 +1,7 @@
-# Monkey Toolbox
+# Tools be Tooling
 
-Every monkey needs a toolbox.
+What can I say, every laboratory needs a good set of tools.
 
----
-
-Featuring:
-
-- Bash
-- Vim
+Tools to bring with me whereever I go.
 
 

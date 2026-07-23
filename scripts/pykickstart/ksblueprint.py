@@ -194,6 +194,68 @@ def normalize_packages(raw):
 
 
 # ---------------------------------------------------------------------------
+# DISA STIG profile catalog - short aliases for 'openscap.profile' so you can
+# write "stig" instead of "xccdf_org.ssgproject.content_profile_stig".
+#
+# SCAP Security Guide ships its DISA-derived profiles under the SAME xccdf
+# profile id in every product's datastream (ssg-rhel8-ds.xml, ssg-rhel9-ds.xml,
+# ssg-ol8-ds.xml, ...) - the id doesn't encode the OS version, the datastream
+# filename does, and content-type: scap-security-guide already picks the
+# right per-OS datastream automatically at build/install time. So this
+# catalog only needs to resolve the alias -> profile id and flag whether the
+# target distro actually has an official DISA STIG at all.
+# ---------------------------------------------------------------------------
+STIG_CATALOG = {
+    "stig": {
+        "profile_id": "xccdf_org.ssgproject.content_profile_stig",
+        "title": "DISA STIG",
+        "note": None,
+    },
+    "stig-gui": {
+        "profile_id": "xccdf_org.ssgproject.content_profile_stig_gui",
+        "title": "DISA STIG with GUI",
+        "note": "assumes a graphical desktop install; use 'stig' for server/text-mode.",
+    },
+}
+STIG_CATALOG["disa-stig"] = STIG_CATALOG["stig"]
+STIG_CATALOG["disa-stig-gui"] = STIG_CATALOG["stig-gui"]
+
+# DISA/NIAP only publish official STIGs for these families. CentOS Stream,
+# AlmaLinux, and Rocky are ABI-compatible with RHEL, so the RHEL STIG content
+# is commonly applied to them anyway - but that's community practice, not a
+# DISA-certified baseline for those distros specifically.
+_STIG_OFFICIAL_FAMILIES = ("rhel", "ol")
+_STIG_UNOFFICIAL_FAMILIES = ("centos", "almalinux", "rocky")
+
+
+def resolve_stig_alias(profile, cfg, warnings):
+    """If 'profile' is a STIG_CATALOG short name, resolve it to the full
+    xccdf profile id (and warn about applicability); otherwise pass through
+    unchanged, since a full xccdf_... id is already valid input."""
+    entry = STIG_CATALOG.get(str(profile).strip().lower())
+    if not entry:
+        return profile
+
+    family, _major = parse_distro(cfg.get("distro"))
+    family = cfg.get("repo_family") or family
+    if family in _STIG_UNOFFICIAL_FAMILIES:
+        warnings.append(
+            "openscap profile '%s' is a DISA STIG alias, but '%s' is not an official "
+            "DISA STIG target (RHEL/Oracle Linux only). The RHEL content is commonly "
+            "applied anyway since it's ABI-compatible, but this is community practice, "
+            "not a DISA-certified baseline." % (profile, family))
+    elif family and family not in _STIG_OFFICIAL_FAMILIES:
+        warnings.append(
+            "openscap profile '%s' is a DISA STIG alias, but distro family '%s' has no "
+            "official DISA STIG - double check this profile applies before relying on "
+            "it." % (profile, family))
+    if entry.get("note"):
+        warnings.append("openscap profile '%s': %s" % (profile, entry["note"]))
+
+    return entry["profile_id"]
+
+
+# ---------------------------------------------------------------------------
 # OpenSCAP compliance - can be applied two ways, and both can be requested
 # at once:
 #   * kickstart  -> %addon org_fedora_oscap, enforced live by anaconda during
@@ -213,6 +275,7 @@ def normalize_openscap(cfg, warnings):
     if not profile:
         warnings.append("openscap config given but no 'profile' set - skipping OpenSCAP.")
         return None
+    profile = resolve_stig_alias(profile, cfg, warnings)
 
     content_type = raw.get("content_type", "scap-security-guide")
     datastream = raw.get("datastream")
@@ -555,6 +618,8 @@ def parse_args(argv):
     p.add_argument("--embed-kickstart", action="store_true",
                    help="fold the kickstart into the blueprint's "
                         "[customizations.installer.kickstart] for a self-contained ISO")
+    p.add_argument("--list-stig-profiles", action="store_true",
+                   help="print the DISA STIG profile alias catalog and exit")
     # scalar overrides (win over config)
     p.add_argument("--name")
     p.add_argument("--distro")
@@ -598,6 +663,24 @@ def apply_overrides(cfg, args):
 
 def main(argv=None):
     args = parse_args(argv if argv is not None else sys.argv[1:])
+
+    if args.list_stig_profiles:
+        print("DISA STIG profile aliases (use as openscap.profile in config):\n")
+        seen = set()
+        for alias, entry in STIG_CATALOG.items():
+            key = entry["profile_id"]
+            if key in seen:
+                continue
+            seen.add(key)
+            aliases = [a for a, e in STIG_CATALOG.items() if e["profile_id"] == key]
+            print("  %-24s -> %s" % ("/".join(sorted(aliases)), entry["profile_id"]))
+            print("      %s%s" % (entry["title"], (" - " + entry["note"]) if entry.get("note") else ""))
+        print("\nOfficially published for: RHEL, Oracle Linux (per DISA/NIAP).")
+        print("CentOS Stream / AlmaLinux / Rocky: not an official DISA target, but the")
+        print("RHEL content is commonly applied anyway since they're ABI-compatible -")
+        print("community practice only, not a DISA-certified baseline for those distros.")
+        return 0
+
     cfg = apply_overrides(load_config(args.config), args)
 
     if not cfg.get("name"):

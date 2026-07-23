@@ -100,6 +100,10 @@ reboot: true
 #     is 'url', since composer isn't building that payload).
 # openscap:
 #   profile: xccdf_org.ssgproject.content_profile_cis   # required
+#   # DISA STIG short names also work here: 'stig' or 'stig-gui' resolve to
+#   # the full xccdf id (run `ksblueprint.py --list-stig-profiles` to see
+#   # the catalog). A raw xccdf_... id, like the CIS example above, is
+#   # always accepted unchanged too.
 #   # content_type: scap-security-guide   # default; built-in per-distro content
 #   # content_type: datastream            # use a custom datastream instead:
 #   # datastream: /path/or/url/to/ds.xml

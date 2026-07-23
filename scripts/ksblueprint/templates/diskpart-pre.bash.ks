@@ -43,7 +43,6 @@ logvol /var/tmp         --vgname=os --name=vartmp  --fstype=xfs  --size=10240
 logvol /var/log         --vgname=os --name=varlog  --fstype=xfs  --size=10240
 logvol /var/log/audit   --vgname=os --name=audit   --fstype=xfs  --size=10240
 logvol /var/log/journal --vgname=os --name=journal --fstype=xfs  --size=10240
-logvol /srv/storage     --vgname=os --name=storage --fstype=xfs  --grow --size=1
 logvol swap             --vgname=os --name=swap    --fstype=swap --recommended
 EOF
 }

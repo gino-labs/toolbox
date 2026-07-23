@@ -1,0 +1,3 @@
+# Ignore build artifacts and vault configs used to build
+build
+vault

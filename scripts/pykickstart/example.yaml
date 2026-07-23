@@ -1,0 +1,96 @@
+# ksblueprint example config
+# Everything except 'name' is optional. CLI flags override any of these.
+
+name: ryzenbolt
+version: "0.1.0"
+description: "CentOS Stream 9 base image - gxcurtis.dev homelab"
+distro: centos-9          # EPEL/CRB below are Enterprise-Linux only
+# arch: x86_64            # default; override for aarch64 etc.
+# repo_release: 9         # override if the distro string is ambiguous (e.g. rhel-92)
+
+# ---- BLUEPRINT-OWNED: what the OS *is* ----
+packages:
+  - "@core"                 # a leading @ becomes a [[groups]] entry
+  - vim-enhanced
+  - git
+  - name: tmux              # dict form lets you pin a version
+    version: "*"
+  - ansible-core
+  - htop                    # lives in EPEL
+groups:
+  - development-tools
+
+# Extra build repos so the packages above resolve (composer sources).
+# BaseOS/AppStream are already system repos - only list the extras.
+# Short names come from the built-in catalog; or give a full dict to customise.
+repos:
+  - epel
+  - crb
+  # - id: k8s
+  #   name: Kubernetes
+  #   type: yum-baseurl
+  #   url: https://pkgs.k8s.io/core:/stable:/v1.30/rpm/
+  #   check_gpg: false
+
+hostname: ryzenbolt.gxcurtis.dev
+timezone: America/Phoenix
+ntp_servers:
+  - 0.fedora.pool.ntp.org
+  - 1.fedora.pool.ntp.org
+
+locale:
+  languages: ["en_US.UTF-8"]
+  keyboard: us
+
+firewall:
+  ports: ["22:tcp"]
+  services_enabled: [ssh]
+
+services:
+  enabled: [sshd, chronyd]
+  disabled: []
+
+kernel_append: "audit=1 audit_backlog_limit=8192"
+
+# ---- KICKSTART-OWNED: how it *installs* ----
+install_source:
+  type: ostree              # ostree | liveimg | url
+  osname: centos
+  remote: centos
+  url: http://ostree.gxcurtis.dev/repo
+  ref: centos/9/x86_64/edge
+  nogpg: true
+
+# For a self-contained OFFLINE installer ISO, set install_source.type: media
+# and uncomment the next line (or pass --embed-kickstart) to fold this kickstart
+# into the blueprint's [customizations.installer.kickstart]:
+# embed_kickstart: true
+
+selinux: enforcing
+
+network:
+  bootproto: dhcp
+  # static example:
+  # bootproto: static
+  # device: eno1
+  # ip: 10.0.10.20
+  # netmask: 255.255.255.0
+  # gateway: 10.0.10.1
+  # nameservers: [10.0.10.2, 1.1.1.1]
+
+rootpw:
+  lock: true                # or: {iscrypted: true, value: "$6$..."}
+
+users:
+  - name: gino
+    groups: [wheel]
+    iscrypted: true
+    password: "$6$rounds=4096$examplesalt$REPLACE_WITH_REAL_HASH"
+    sshkeys:
+      - "ssh-ed25519 AAAAC3NzaC1REPLACE gino@ryzenbolt"
+
+reboot: true
+
+post_script: |
+  # runs in the installed system (chroot) at the end of install
+  echo "provisioned by ksblueprint" > /etc/ksblueprint-stamp

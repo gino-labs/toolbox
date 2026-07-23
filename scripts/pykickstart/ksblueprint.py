@@ -178,19 +178,33 @@ def build_sources(cfg, warnings):
 # ---------------------------------------------------------------------------
 # helpers to normalise loose config into canonical shapes
 # ---------------------------------------------------------------------------
-def normalize_packages(raw):
+def normalize_packages(raw, warnings=None):
     """Accept 'vim', {'name':'vim','version':'1.2'}; strings starting with '@'
-    are groups, returned separately."""
-    pkgs, groups = [], []
+    are comps groups (e.g. '@development-tools'), returned separately. A
+    '@^name' entry is a comps *environment* instead (e.g.
+    '@^server-product-environment' - what a classic kickstart %packages
+    section would write as '@^Server Product Environment'), also returned
+    separately since composer's blueprint [[groups]] schema only documents
+    support for <group> ids, not <environment> ids."""
+    pkgs, groups, environments = [], [], []
     for item in raw or []:
         if isinstance(item, dict):
             pkgs.append({"name": item["name"], "version": item.get("version", "*")})
         elif isinstance(item, str):
-            if item.startswith("@"):
+            if item.startswith("@^"):
+                environments.append(item[2:])
+            elif item.startswith("@"):
                 groups.append(item[1:])
             else:
                 pkgs.append({"name": item, "version": "*"})
-    return pkgs, groups
+    if environments and warnings is not None:
+        warnings.append(
+            "packages list includes environment group(s) %s (via '@^name'). Composer's "
+            "blueprint [[groups]] schema is documented for comps <group> ids, not "
+            "<environment> ids - this is emitted as a best-effort [[groups]] entry, not "
+            "a guaranteed mechanism. Run 'composer-cli blueprints depsolve' to confirm "
+            "it actually resolves before building." % ", ".join(environments))
+    return pkgs, groups, environments
 
 
 # ---------------------------------------------------------------------------
@@ -318,6 +332,9 @@ def build_customizations(cfg, oscap=None):
     if cfg.get("hostname"):
         scalars.append(kv("hostname", cfg["hostname"]))
 
+    if cfg.get("fips"):
+        scalars.append(kv("fips", True))
+
     if cfg.get("kernel_append"):
         sub.append(("[customizations.kernel]", [kv("append", cfg["kernel_append"])]))
 
@@ -372,8 +389,8 @@ def build_customizations(cfg, oscap=None):
     return block
 
 
-def build_blueprint(cfg, embedded_ks=None, oscap=None):
-    pkgs, at_groups = normalize_packages(cfg.get("packages"))
+def build_blueprint(cfg, embedded_ks=None, oscap=None, warnings=None):
+    pkgs, at_groups, environments = normalize_packages(cfg.get("packages"), warnings)
     groups = at_groups + list(cfg.get("groups") or [])
 
     out = [
@@ -389,6 +406,11 @@ def build_blueprint(cfg, embedded_ks=None, oscap=None):
         out += ["[[packages]]", kv("name", p["name"]), kv("version", p["version"]), ""]
     for g in groups:
         out += ["[[groups]]", kv("name", g), ""]
+    for e in environments:
+        out += ["# comps <environment> id, not a <group> id - best-effort, unverified",
+                "# support in the blueprint schema (see warning); confirm with",
+                "# 'composer-cli blueprints depsolve' before building.",
+                "[[groups]]", kv("name", e), ""]
 
     out += build_customizations(cfg, oscap)
     if embedded_ks is not None:
@@ -602,6 +624,24 @@ def validate(cfg, warnings):
     if not cfg.get("rootpw") and not cfg.get("users"):
         warnings.append("no rootpw and no users - root will be LOCKED with no login user.")
 
+    if cfg.get("fips"):
+        if src.get("type") == "url":
+            warnings.append(
+                "fips: true is set, but install_source.type is 'url' - composer isn't "
+                "building this payload, so [customizations] fips = true will NOT be "
+                "applied. A url-mode (live dnf) install can only get FIPS mode by booting "
+                "the anaconda installer itself with 'fips=1' on its kernel command line - "
+                "that's outside what this kickstart/blueprint pair can control.")
+        family, _major = parse_distro(cfg.get("distro"))
+        family = cfg.get("repo_family") or family
+        if family in _STIG_UNOFFICIAL_FAMILIES:
+            warnings.append(
+                "fips: true is set on distro family '%s'. This enables FIPS *mode* "
+                "(restricts the system to approved algorithms/kernel args), but only "
+                "RHEL ships the specific crypto module builds that hold an actual NIST "
+                "CMVP FIPS 140 validation certificate - '%s' running in fips mode is not "
+                "the same as being FIPS 140 validated/certified." % (family, family))
+
     if problems:
         raise SystemExit("CONFLICT:\n  - " + "\n  - ".join(problems))
 
@@ -695,11 +735,11 @@ def main(argv=None):
         with open(args.pre_file) as fh:
             pre_text = fh.read()
 
-    blueprint = build_blueprint(cfg, oscap=oscap)
+    blueprint = build_blueprint(cfg, oscap=oscap, warnings=warnings)
     kickstart = build_kickstart(cfg, pre_text, warnings, oscap=oscap)
     embed = bool(cfg.get("embed_kickstart") or args.embed_kickstart)
     if embed:
-        blueprint = build_blueprint(cfg, embedded_ks=kickstart, oscap=oscap)
+        blueprint = build_blueprint(cfg, embedded_ks=kickstart, oscap=oscap, warnings=warnings)
     sources = build_sources(cfg, warnings)
 
     os.makedirs(args.outdir, exist_ok=True)
@@ -716,7 +756,7 @@ def main(argv=None):
             fh.write(text)
         source_paths.append(path)
 
-    for w in warnings:
+    for w in dict.fromkeys(warnings):   # de-dupe, preserve order (embed mode builds twice)
         print("warning: %s" % w, file=sys.stderr)
 
     print("wrote %s" % bp_path)

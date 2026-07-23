@@ -52,6 +52,12 @@ services:
 
 kernel_append: "audit=1 audit_backlog_limit=8192"
 
+# fips: true   # RHEL image builder's documented FIPS toggle -> [customizations] fips = true
+#              # Only takes effect when composer builds the payload (skipped, with a
+#              # warning, for install_source.type: url). On CentOS Stream/AlmaLinux/Rocky
+#              # this enables FIPS *mode* only - those distros don't ship RHEL's NIST
+#              # CMVP-validated crypto module builds, so it isn't FIPS 140 certified there.
+
 # ---- KICKSTART-OWNED: how it *installs* ----
 install_source:
   type: ostree              # ostree | liveimg | url

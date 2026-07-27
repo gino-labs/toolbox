@@ -42,13 +42,50 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-# Fedora/RHEL name the tools grub2-*, most other distros grub-*. Pick whatever exists.
+# ---------- 0b. preflight: verify all tools + GRUB EFI modules are present ----------
+# Runs BEFORE anything destructive so a missing package can't leave a half-built
+# stick. Collects ALL missing deps and prints one dnf line (package names are
+# Fedora/RHEL; Debian/Ubuntu equivalents differ).
+missing_cmds=()
+missing_pkgs=()
+need() {  # need <command-or-path> <package>
+    if [[ "$1" == /* ]]; then
+        [[ -e "$1" ]] || { missing_cmds+=("$1"); missing_pkgs+=("$2"); }
+    else
+        command -v "$1" >/dev/null 2>&1 || { missing_cmds+=("$1"); missing_pkgs+=("$2"); }
+    fi
+}
+
+need parted    parted
+need mkfs.vfat dosfstools
+need mkfs.ext4 e2fsprogs
+need wipefs    util-linux
+need lsblk     util-linux
+need udevadm   systemd-udev
+
+# grub-mkstandalone: named grub2-* on Fedora/RHEL, grub-* elsewhere. Need one.
 if command -v grub2-mkstandalone >/dev/null 2>&1; then
     MKSTANDALONE="grub2-mkstandalone"
 elif command -v grub-mkstandalone >/dev/null 2>&1; then
     MKSTANDALONE="grub-mkstandalone"
 else
-    echo "grub-mkstandalone not found. Install grub2-tools-extra (Fedora/RHEL)." >&2
+    missing_cmds+=("grub2-mkstandalone")
+    missing_pkgs+=("grub2-tools-extra")
+fi
+
+# The x86_64-efi module set -- this is the piece behind the "modinfo.sh doesn't
+# exist" error. It ships separately from the grub tools and the BIOS modules.
+need /usr/lib/grub/x86_64-efi/modinfo.sh grub2-efi-x64-modules
+
+if (( ${#missing_pkgs[@]} > 0 )); then
+    echo "Missing dependencies:" >&2
+    for i in "${!missing_cmds[@]}"; do
+        printf '  - %-38s (package: %s)\n' "${missing_cmds[$i]}" "${missing_pkgs[$i]}" >&2
+    done
+    uniq_pkgs=$(printf '%s\n' "${missing_pkgs[@]}" | sort -u | tr '\n' ' ')
+    echo >&2
+    echo "Install them, then re-run:" >&2
+    echo "  sudo dnf install ${uniq_pkgs% }" >&2
     exit 1
 fi
 

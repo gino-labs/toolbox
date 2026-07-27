@@ -1,0 +1,230 @@
+#!/usr/bin/env bash
+#
+# build-multiboot-usb.sh
+# -----------------------------------------------------------------------------
+# Build a Ventoy-style, self-scanning multiboot USB for the RHEL family
+# (RHEL, Rocky, AlmaLinux, CentOS Stream) plus Fedora (Live + installer).
+#
+# It creates this layout on the target device:
+#   part1  ~100 MiB  FAT32  label MULTIESP  ->  holds the UEFI bootloader
+#   part2  remainder ext4   label MULTIISO  ->  drop your *.iso files in /isos
+#
+# Why ext4 (not FAT32) for the data partition: RHEL/Rocky/Alma DVD ISOs are
+# well over 4 GiB, and FAT32 caps single files at 4 GiB. GRUB reads ext4
+# natively, so this is the least-fuss choice on a Linux host.
+#
+# UEFI ONLY. (ryzenbolt and any modern Ryzen box boot UEFI; adding legacy BIOS
+# means a BIOS-boot partition + i386-pc target, which is a "build-on", not MVP.)
+#
+# Host packages needed (Fedora/RHEL):
+#   sudo dnf install grub2-efi-x64-modules grub2-tools-extra parted \
+#                    dosfstools e2fsprogs
+#
+# Usage:
+#   sudo ./build-multiboot-usb.sh /dev/sdX     # whole device, NOT a partition
+#
+# Then copy ISOs onto the stick:
+#   cp Rocky-9.5-x86_64-dvd.iso  /run/media/$USER/MULTIISO/isos/
+# -----------------------------------------------------------------------------
+set -euo pipefail
+
+ESP_LABEL="MULTIESP"
+DATA_LABEL="MULTIISO"
+
+# ---------- 0. args, root, tooling ----------
+DEV="${1:-}"
+if [[ -z "$DEV" || ! -b "$DEV" ]]; then
+    echo "Usage: sudo $0 /dev/sdX   (whole device, e.g. /dev/sdb, NOT /dev/sdb1)" >&2
+    exit 1
+fi
+if [[ $EUID -ne 0 ]]; then
+    echo "Please run as root (sudo)." >&2
+    exit 1
+fi
+
+# Fedora/RHEL name the tools grub2-*, most other distros grub-*. Pick whatever exists.
+if command -v grub2-mkstandalone >/dev/null 2>&1; then
+    MKSTANDALONE="grub2-mkstandalone"
+elif command -v grub-mkstandalone >/dev/null 2>&1; then
+    MKSTANDALONE="grub-mkstandalone"
+else
+    echo "grub-mkstandalone not found. Install grub2-tools-extra (Fedora/RHEL)." >&2
+    exit 1
+fi
+
+# nvme0n1 -> nvme0n1p1 ; mmcblk0 -> mmcblk0p1 ; sdb -> sdb1
+if [[ "$DEV" =~ [0-9]$ ]]; then PSEP="p"; else PSEP=""; fi
+ESP_PART="${DEV}${PSEP}1"
+DATA_PART="${DEV}${PSEP}2"
+
+# ---------- 1. confirm (destructive!) ----------
+echo "About to ERASE and repartition this device:"
+lsblk -do NAME,MODEL,SIZE,TRAN "$DEV" 2>/dev/null || true
+echo
+read -rp "Type ERASE (all caps) to continue: " ans
+[[ "$ans" == "ERASE" ]] || { echo "Aborted."; exit 1; }
+
+# ---------- 2. clear any existing mounts on the device ----------
+umount "${DEV}"?* 2>/dev/null || true
+
+# ---------- 3. partition: GPT, ESP + data ----------
+wipefs -a "$DEV"
+parted -s "$DEV" mklabel gpt
+parted -s "$DEV" mkpart "$ESP_LABEL"  fat32 1MiB 101MiB
+parted -s "$DEV" set 1 esp on                 # flag the ESP so firmware finds it
+parted -s "$DEV" mkpart "$DATA_LABEL" ext4  101MiB 100%
+udevadm settle
+sleep 1
+
+# ---------- 4. filesystems ----------
+mkfs.vfat -F32 -n "$ESP_LABEL"  "$ESP_PART"    # -n = FAT volume label
+mkfs.ext4 -F   -L "$DATA_LABEL" "$DATA_PART"   # -L = ext label (search matches on this)
+
+# ---------- 5. mount ----------
+ESP_MNT="$(mktemp -d)"
+DATA_MNT="$(mktemp -d)"
+mount "$ESP_PART"  "$ESP_MNT"
+mount "$DATA_PART" "$DATA_MNT"
+mkdir -p "$ESP_MNT/EFI/BOOT" "$DATA_MNT/isos" "$DATA_MNT/kickstarts" "$DATA_MNT/boot/grub"
+
+# ---------- 6. build a self-contained BOOTX64.EFI ----------
+# We use grub-mkstandalone instead of grub-install on purpose:
+# Fedora's grub2-install is patched to be a no-op for EFI (it expects the
+# distro's signed shim). mkstandalone bakes the modules + a tiny early config
+# into one portable BOOTX64.EFI, sidestepping that entirely.
+#
+# The early config just finds the data partition by label and hands control to
+# the *editable* grub.cfg on the stick, so you can tweak the menu without
+# rebuilding this binary.
+EARLY_CFG="$(mktemp)"
+cat > "$EARLY_CFG" <<'EARLY'
+search --no-floppy --label MULTIISO --set=root
+set prefix=($root)/boot/grub
+configfile ($root)/boot/grub/grub.cfg
+EARLY
+
+"$MKSTANDALONE" \
+    -O x86_64-efi \
+    -o "$ESP_MNT/EFI/BOOT/BOOTX64.EFI" \
+    --modules="search search_label search_fs_uuid configfile normal echo test true \
+               part_gpt part_msdos fat exfat ext2 iso9660 loopback probe regexp \
+               linux initrd all_video videoinfo gfxterm terminal ls halt reboot boot" \
+    "boot/grub/grub.cfg=$EARLY_CFG"
+
+rm -f "$EARLY_CFG"
+
+# ---------- 7. write the real, self-scanning menu ----------
+cat > "$DATA_MNT/boot/grub/grub.cfg" <<'CFG'
+# -----------------------------------------------------------------------------
+# Self-scanning multiboot menu for the RHEL family + Fedora.
+#   ISOs       -> /isos/*.iso        on this (MULTIISO) partition
+#   Kickstarts -> /kickstarts/*.ks   on this (MULTIISO) partition
+# Drop files in and reboot -- no edits needed per ISO or per kickstart.
+# -----------------------------------------------------------------------------
+insmod part_gpt
+insmod ext2
+insmod iso9660
+insmod loopback
+insmod probe
+insmod regexp
+insmod all_video
+
+set timeout=20
+set default=0
+
+# Make (root) point at THIS partition so /isos/*.iso globs resolve here.
+search --no-floppy --label MULTIISO --set=root
+
+# -----------------------------------------------------------------------------
+# Shared boot logic. Reads two globals set by the chosen menu entry:
+#   $isofile  = /isos/<name>.iso            (always set)
+#   $ksfile   = /kickstarts/<name>.ks  OR  "" (empty = no kickstart)
+# -----------------------------------------------------------------------------
+function boot_iso {
+    # Mount the chosen ISO as (loop), then read its own volume label fresh.
+    loopback loop "$isofile"
+    probe --set=isolabel --label (loop)
+
+    if [ -e (loop)/LiveOS/squashfs.img ]; then
+        # --- Live image (Fedora Workstation / Spins) ---
+        # Kickstart is an installer concept, so it's ignored here on purpose.
+        linux (loop)/images/pxeboot/vmlinuz \
+              root=live:CDLABEL=$isolabel rd.live.image \
+              iso-scan/filename=$isofile quiet
+        initrd (loop)/images/pxeboot/initrd.img
+    else
+        # --- Anaconda installer (RHEL/Rocky/Alma/CentOS + Fedora DVD/netinst) ---
+        if [ -n "$ksfile" ]; then
+            # inst.ks=hd:LABEL=<part>:<path> -> Anaconda reads the kickstart off
+            # the MULTIISO partition. $ksfile already begins with /kickstarts/.
+            linux (loop)/images/pxeboot/vmlinuz \
+                  inst.stage2=hd:LABEL=$isolabel \
+                  inst.ks=hd:LABEL=MULTIISO:$ksfile \
+                  iso-scan/filename=$isofile quiet
+        else
+            linux (loop)/images/pxeboot/vmlinuz \
+                  inst.stage2=hd:LABEL=$isolabel \
+                  iso-scan/filename=$isofile quiet
+        fi
+        initrd (loop)/images/pxeboot/initrd.img
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# Menu shape:
+#   ISO: Rocky-9.5-dvd            (submenu)
+#       Boot (no kickstart)
+#       + kickstart: ryzenbolt.ks
+#       + kickstart: minimal.ks
+#   ISO: Fedora-Live             (submenu)
+#       Boot (no kickstart)
+#       ...
+#
+# Outer loop = one submenu per ISO. Inner loop = one entry per kickstart file,
+# plus a "no kickstart" entry. Any ISO x any kickstart is reachable.
+# -----------------------------------------------------------------------------
+for isofile in /isos/*.iso; do
+    if [ -e "$isofile" ]; then
+        regexp --set=isoname '^/isos/(.*)$' "$isofile"
+
+        # The ISO path rides into the submenu as $2 so the inner entries can use it.
+        submenu "ISO: $isoname" "$isofile" {
+            set isofile="$2"
+
+            # --- entry 1: boot this ISO with no kickstart (interactive install) ---
+            # Empty 3rd arg ("") is the "no kickstart" sentinel.
+            menuentry "  Boot (no kickstart)" "$isofile" "" {
+                set isofile="$2"
+                set ksfile="$3"
+                boot_iso
+            }
+
+            # --- one entry per kickstart file in /kickstarts ---
+            for ksfile in /kickstarts/*.ks; do
+                if [ -e "$ksfile" ]; then
+                    regexp --set=ksname '^/kickstarts/(.*)$' "$ksfile"
+                    # Both paths captured as $2 (iso) and $3 (ks).
+                    menuentry "  + kickstart: $ksname" "$isofile" "$ksfile" {
+                        set isofile="$2"
+                        set ksfile="$3"
+                        boot_iso
+                    }
+                fi
+            done
+        }
+    fi
+done
+CFG
+
+# ---------- 8. finish ----------
+sync
+umount "$ESP_MNT" "$DATA_MNT"
+rmdir  "$ESP_MNT" "$DATA_MNT"
+
+echo
+echo "Done."
+echo "  ESP  : $ESP_PART  (label $ESP_LABEL)   -> /EFI/BOOT/BOOTX64.EFI"
+echo "  DATA : $DATA_PART (label $DATA_LABEL)  -> put ISOs in /isos, kickstarts in /kickstarts"
+echo
+echo "Copy ISOs, e.g.:"
+echo "  cp Rocky-9.5-x86_64-dvd.iso  /run/media/\$USER/$DATA_LABEL/isos/"

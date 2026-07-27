@@ -30,6 +30,7 @@ set -euo pipefail
 
 ESP_LABEL="MULTIESP"
 DATA_LABEL="MULTIISO"
+GRUB_EFI_DIR="/usr/lib/grub/x86_64-efi"   # where the *.mod files live (Fedora/RHEL)
 
 # ---------- 0. args, root, tooling ----------
 DEV="${1:-}"
@@ -75,7 +76,7 @@ fi
 
 # The x86_64-efi module set -- this is the piece behind the "modinfo.sh doesn't
 # exist" error. It ships separately from the grub tools and the BIOS modules.
-need /usr/lib/grub/x86_64-efi/modinfo.sh grub2-efi-x64-modules
+need "$GRUB_EFI_DIR/modinfo.sh" grub2-efi-x64-modules
 
 if (( ${#missing_pkgs[@]} > 0 )); then
     echo "Missing dependencies:" >&2
@@ -140,12 +141,46 @@ set prefix=($root)/boot/grub
 configfile ($root)/boot/grub/grub.cfg
 EARLY
 
+# Split modules into ESSENTIAL (boot breaks without them -> hard error if absent)
+# and OPTIONAL (nice-to-have, or provided by another module -> skip silently).
+#
+# Why filter at all: Fedora's EFI module set doesn't ship every module name.
+# e.g. there is no standalone initrd.mod -- the `initrd` command comes bundled
+# in linux.mod. Passing a name with no matching .mod file makes mkstandalone
+# abort ("cannot open <name>.mod"). So we only pass names that actually exist,
+# and we fail loudly only if something we truly need is gone.
+essential_mods="search search_label configfile normal linux \
+                part_gpt ext2 iso9660 loopback probe regexp test echo"
+optional_mods="search_fs_uuid part_msdos fat exfat true initrd \
+               all_video videoinfo gfxterm terminal ls halt reboot boot"
+
+mods=()
+missing_essential=()
+for m in $essential_mods; do
+    if [[ -f "$GRUB_EFI_DIR/$m.mod" ]]; then
+        mods+=("$m")
+    else
+        missing_essential+=("$m")
+    fi
+done
+for m in $optional_mods; do
+    [[ -f "$GRUB_EFI_DIR/$m.mod" ]] && mods+=("$m")   # silently skip if absent
+done
+
+if (( ${#missing_essential[@]} > 0 )); then
+    echo "Essential GRUB modules missing from $GRUB_EFI_DIR:" >&2
+    printf '  - %s.mod\n' "${missing_essential[@]}" >&2
+    echo "Your grub2-efi-x64-modules package looks incomplete; reinstall it." >&2
+    exit 1
+fi
+
+# -d/--directory pins the module source dir (also silences the earlier
+# "specify --target or --directory" hint if auto-detection ever fails).
 "$MKSTANDALONE" \
     -O x86_64-efi \
+    -d "$GRUB_EFI_DIR" \
     -o "$ESP_MNT/EFI/BOOT/BOOTX64.EFI" \
-    --modules="search search_label search_fs_uuid configfile normal echo test true \
-               part_gpt part_msdos fat exfat ext2 iso9660 loopback probe regexp \
-               linux initrd all_video videoinfo gfxterm terminal ls halt reboot boot" \
+    --modules="${mods[*]}" \
     "boot/grub/grub.cfg=$EARLY_CFG"
 
 rm -f "$EARLY_CFG"

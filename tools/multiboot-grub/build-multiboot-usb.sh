@@ -253,19 +253,28 @@ function boot_iso {
               iso-scan/filename=$isofile $liveargs
         initrd (loop)$initrdimg
     else
-        # --- Anaconda installer (RHEL/Rocky/Alma/CentOS + Fedora DVD/netinst) ---
+        # --- Anaconda installer (RHEL/Rocky/Alma/CentOS/Fedora + osbuild) ---
+        # Kickstart precedence:
+        #   1. external ks you picked from /kickstarts  -> read off MULTIISO
+        #   2. else a ks EMBEDDED in the ISO -- osbuild image-installer and
+        #      edge/iot-installer bake one in (commonly /osbuild.ks). Pass it via
+        #      the ISO's OWN label so the unattended blueprint build actually runs.
+        #   3. else none (plain interactive install).
+        # $ksarg has no spaces, so it stays unquoted on the linux line (empty ->
+        # expands to nothing).
         if [ -n "$ksfile" ]; then
-            # inst.ks=hd:LABEL=<part>:<path> -> Anaconda reads the kickstart off
-            # the MULTIISO partition. $ksfile already begins with /kickstarts/.
-            linux (loop)$kernel \
-                  inst.stage2=hd:LABEL=$isolabel \
-                  inst.ks=hd:LABEL=MULTIISO:$ksfile \
-                  iso-scan/filename=$isofile quiet
+            set ksarg="inst.ks=hd:LABEL=MULTIISO:$ksfile"
+        elif [ -e (loop)/osbuild.ks ]; then
+            set ksarg="inst.ks=hd:LABEL=$isolabel:/osbuild.ks"
+        elif [ -e (loop)/ks.cfg ]; then
+            set ksarg="inst.ks=hd:LABEL=$isolabel:/ks.cfg"
         else
-            linux (loop)$kernel \
-                  inst.stage2=hd:LABEL=$isolabel \
-                  iso-scan/filename=$isofile quiet
+            set ksarg=""
         fi
+        linux (loop)$kernel \
+              inst.stage2=hd:LABEL=$isolabel \
+              $ksarg \
+              iso-scan/filename=$isofile quiet
         initrd (loop)$initrdimg
     fi
 }
@@ -322,8 +331,10 @@ for isofile in /isos/*.iso; do
                     boot_iso
                 }
             else
-                # --- Anaconda installer: interactive + one entry per kickstart ---
-                menuentry "  Boot (no kickstart)" "$isofile" "" {
+                # --- Anaconda installer: default boot + one entry per ext. ks ---
+                # "Boot" honors a kickstart EMBEDDED in the ISO (osbuild) if
+                # present; otherwise it's a plain interactive install.
+                menuentry "  Boot" "$isofile" "" {
                     set isofile="$2"
                     set ksfile="$3"
                     boot_iso

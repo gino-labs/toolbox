@@ -298,6 +298,20 @@ function boot_iso {
     elif [ -e (loop)/isolinux/vmlinuz0 ]; then
         set kernelpath="(loop)/isolinux/vmlinuz0"
         set initrdpath="(loop)/isolinux/initrd0.img"
+<<<<<<< HEAD
+=======
+    elif [ -e (loop)/boot/x86_64/loader/linux ]; then
+        # kiwi-style layout (the convention openSUSE media use, and what newer
+        # Rocky live images ship): boot/<arch>/loader/{linux,initrd}. Note the
+        # kernel is called "linux", not "vmlinuz" -- which is why a vmlinuz
+        # search finds nothing even though the kernel is right there.
+        set kernelpath="(loop)/boot/x86_64/loader/linux"
+        if [ -e (loop)/boot/x86_64/loader/initrd ]; then
+            set initrdpath="(loop)/boot/x86_64/loader/initrd"
+        elif [ -e (loop)/boot/x86_64/loader/initrd.img ]; then
+            set initrdpath="(loop)/boot/x86_64/loader/initrd.img"
+        fi
+>>>>>>> 7a0c210 (Wed Jul 29 10:24:53 PM MST 2026)
     elif [ -e (loop)/boot/vmlinuz ]; then
         set kernelpath="(loop)/boot/vmlinuz"
         if [ -e (loop)/boot/initrd.img ]; then
@@ -309,10 +323,19 @@ function boot_iso {
         # Last resort: glob for VERSIONED names, e.g. /boot/vmlinuz-6.12.0-55.el9.
         # GRUB expands wildcards itself (that's what regexp.mod is for), and the
         # loop variable already holds the full (loop)/... path.
+<<<<<<< HEAD
         for k in (loop)/boot/vmlinuz-* (loop)/boot/vmlinuz*; do
             if [ -e "$k" ]; then set kernelpath="$k"; fi
         done
         for i in (loop)/boot/initramfs-*.img (loop)/boot/initrd.img-* (loop)/boot/initrd-*.img; do
+=======
+        # Arch-agnostic kiwi layout first (aarch64 builds use boot/aarch64/...),
+        # then versioned RHEL-style names under /boot.
+        for k in (loop)/boot/*/loader/linux (loop)/boot/vmlinuz-* (loop)/boot/vmlinuz*; do
+            if [ -e "$k" ]; then set kernelpath="$k"; fi
+        done
+        for i in (loop)/boot/*/loader/initrd (loop)/boot/initramfs-*.img (loop)/boot/initrd.img-* (loop)/boot/initrd-*.img; do
+>>>>>>> 7a0c210 (Wed Jul 29 10:24:53 PM MST 2026)
             if [ -e "$i" ]; then set initrdpath="$i"; fi
         done
     fi
@@ -322,12 +345,24 @@ function boot_iso {
         # lacks a kernel. If the `loopback` attach above failed, (loop) doesn't
         # exist and all three tests fail too. So show what GRUB can actually
         # see, which separates the two cases at a glance.
+<<<<<<< HEAD
         echo "No kernel found (looked in images/pxeboot and isolinux) in:"
         echo "  $isofile"
+=======
+        echo "No kernel found in:"
+        echo "  $isofile"
+        echo "(searched images/pxeboot, isolinux, boot/, boot/<arch>/loader/)"
+>>>>>>> 7a0c210 (Wed Jul 29 10:24:53 PM MST 2026)
         echo
         echo "What GRUB can see inside that ISO:"
         ls (loop)/
         echo
+<<<<<<< HEAD
+=======
+        echo "Contents of /boot inside the ISO (empty/error = no such dir):"
+        ls (loop)/boot/
+        echo
+>>>>>>> 7a0c210 (Wed Jul 29 10:24:53 PM MST 2026)
         echo "Sizes GRUB sees for the ISO files themselves:"
         ls -l ($root)/isos/
         echo
@@ -369,6 +404,13 @@ function boot_iso {
             echo "Press a key..."
             read
         fi
+<<<<<<< HEAD
+=======
+        # Hand our graphics mode to the kernel instead of resetting it. Taken
+        # from the ISO's own grub.cfg -- omitting it is a classic cause of a
+        # black screen once the live kernel takes over.
+        set gfxpayload=keep
+>>>>>>> 7a0c210 (Wed Jul 29 10:24:53 PM MST 2026)
         linux $kernelpath \
               root=live:CDLABEL=$isolabel rd.live.image \
               iso-scan/filename=$isofile $liveargs
@@ -456,13 +498,30 @@ for isofile in /isos/*.iso; do
             if [ "$islive" = 1 ]; then
                 # --- Live image: no kickstart; offer normal / RAM / debug. ---
                 # 4th arg = extra kernel args, captured as $4 -> $liveargs.
-                menuentry "  Boot (live desktop)" "$isofile" "" "quiet" {
+                # $liveargs values below are lifted from the ISOs' own menus:
+                #   quiet rhgb      normal boot; rhgb = Red Hat graphical boot
+                #   rd.live.ram=1   copy the whole image into RAM, then eject
+                #   nomodeset       skip KMS -- for hosts with a black screen
+                #   rd.live.check   verify the media checksum before booting
+                menuentry "  Boot (live desktop)" "$isofile" "" "quiet rhgb" {
                     set isofile="$2"
                     set ksfile="$3"
                     set liveargs="$4"
                     boot_iso
                 }
-                menuentry "  Boot (live, into RAM -- ejectable)" "$isofile" "" "rd.live.ram=1 quiet" {
+                menuentry "  Boot (live, into RAM -- ejectable)" "$isofile" "" "rd.live.ram=1 quiet rhgb" {
+                    set isofile="$2"
+                    set ksfile="$3"
+                    set liveargs="$4"
+                    boot_iso
+                }
+                menuentry "  Boot (live, basic graphics -- nomodeset)" "$isofile" "" "nomodeset quiet rhgb" {
+                    set isofile="$2"
+                    set ksfile="$3"
+                    set liveargs="$4"
+                    boot_iso
+                }
+                menuentry "  Boot (live, verify media first)" "$isofile" "" "rd.live.check quiet rhgb" {
                     set isofile="$2"
                     set ksfile="$3"
                     set liveargs="$4"
@@ -540,4 +599,9 @@ echo "  3. Test without rebooting real hardware, straight off the device:"
 echo "       sudo qemu-system-x86_64 -enable-kvm -m 4096 \\"
 echo "         -bios /usr/share/edk2/ovmf/OVMF_CODE.fd \\"
 echo "         -drive format=raw,file=$DEV"
+<<<<<<< HEAD
 echo "     (OVMF here has Secure Boot off, so this tests everything EXCEPT signing.)"
+=======
+echo "     (OVMF here has Secure Boot off, so this tests everything EXCEPT signing.)"
+
+>>>>>>> 7a0c210 (Wed Jul 29 10:24:53 PM MST 2026)

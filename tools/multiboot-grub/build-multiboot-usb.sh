@@ -132,7 +132,11 @@ mkfs.vfat -F32 -n "$ESP_LABEL"  "$ESP_PART"    # -n = FAT volume label
 # "error: unknown filesystem" and a grub rescue> prompt.
 #   -O  = set filesystem features; a leading ^ means "turn this feature OFF"
 # Older e2fsprogs doesn't know these names at all, hence the fallback.
-GRUB_UNSAFE_FEATURES="^orphan_file,^metadata_csum_seed"
+# ^64bit is added because GRUB's ext2 driver is the least-exercised link in
+# this chain, and 64-bit block addressing plus multi-GiB files (a 12 GiB DVD ISO
+# has a deep extent tree) is exactly where it has historically misread blocks.
+# Disabling it costs nothing below 16 TiB.
+GRUB_UNSAFE_FEATURES="^orphan_file,^metadata_csum_seed,^64bit"
 if ! mkfs.ext4 -F -O "$GRUB_UNSAFE_FEATURES" -L "$DATA_LABEL" "$DATA_PART" 2>/dev/null; then
     echo "note: this e2fsprogs doesn't know $GRUB_UNSAFE_FEATURES; using defaults."
     mkfs.ext4 -F -L "$DATA_LABEL" "$DATA_PART"   # -L = ext label (search matches on this)
@@ -142,9 +146,9 @@ fi
 # still appear here, GRUB will not be able to read this partition.
 echo "ext4 features on $DATA_PART:"
 dumpe2fs -h "$DATA_PART" 2>/dev/null | sed -n 's/^Filesystem features:/  /p'
-if dumpe2fs -h "$DATA_PART" 2>/dev/null | grep -qE 'orphan_file|metadata_csum_seed'; then
+if dumpe2fs -h "$DATA_PART" 2>/dev/null | grep -qE 'orphan_file|metadata_csum_seed|64bit'; then
     echo "  WARNING: GRUB-incompatible feature still enabled. Try manually:" >&2
-    echo "    tune2fs -O ^orphan_file,^metadata_csum_seed $DATA_PART" >&2
+    echo "    tune2fs -O ^orphan_file,^metadata_csum_seed,^64bit $DATA_PART" >&2
 fi
 
 # ---------- 5. mount ----------
@@ -277,19 +281,43 @@ function boot_iso {
     loopback loop ($root)$isofile
     probe --set=isolabel --label (loop)
 
-    # Locate the kernel + initrd. RHEL/Rocky/Alma/CentOS DVDs, Fedora installer
-    # ISOs, and modern Fedora Live ISOs all keep them under /images/pxeboot.
-    # Older isolinux-based media keep them under /isolinux. Probe in that order.
+    # Locate the kernel + initrd. Paths are stored COMPLETE, including the
+    # (loop) device, so the glob fallback below can assign one directly.
+    #   /images/pxeboot  RHEL/Rocky/Alma/CentOS DVDs, Fedora installer ISOs,
+    #                    most lorax-built live media
+    #   /isolinux        older syslinux-based media
+    #   /boot            newer GRUB-native ISOs that ship no syslinux tree
+    set kernelpath=""
+    set initrdpath=""
     if [ -e (loop)/images/pxeboot/vmlinuz ]; then
-        set kernel=/images/pxeboot/vmlinuz
-        set initrdimg=/images/pxeboot/initrd.img
+        set kernelpath="(loop)/images/pxeboot/vmlinuz"
+        set initrdpath="(loop)/images/pxeboot/initrd.img"
     elif [ -e (loop)/isolinux/vmlinuz ]; then
-        set kernel=/isolinux/vmlinuz
-        set initrdimg=/isolinux/initrd.img
+        set kernelpath="(loop)/isolinux/vmlinuz"
+        set initrdpath="(loop)/isolinux/initrd.img"
     elif [ -e (loop)/isolinux/vmlinuz0 ]; then
-        set kernel=/isolinux/vmlinuz0
-        set initrdimg=/isolinux/initrd0.img
+        set kernelpath="(loop)/isolinux/vmlinuz0"
+        set initrdpath="(loop)/isolinux/initrd0.img"
+    elif [ -e (loop)/boot/vmlinuz ]; then
+        set kernelpath="(loop)/boot/vmlinuz"
+        if [ -e (loop)/boot/initrd.img ]; then
+            set initrdpath="(loop)/boot/initrd.img"
+        elif [ -e (loop)/boot/initramfs.img ]; then
+            set initrdpath="(loop)/boot/initramfs.img"
+        fi
     else
+        # Last resort: glob for VERSIONED names, e.g. /boot/vmlinuz-6.12.0-55.el9.
+        # GRUB expands wildcards itself (that's what regexp.mod is for), and the
+        # loop variable already holds the full (loop)/... path.
+        for k in (loop)/boot/vmlinuz-* (loop)/boot/vmlinuz*; do
+            if [ -e "$k" ]; then set kernelpath="$k"; fi
+        done
+        for i in (loop)/boot/initramfs-*.img (loop)/boot/initrd.img-* (loop)/boot/initrd-*.img; do
+            if [ -e "$i" ]; then set initrdpath="$i"; fi
+        done
+    fi
+
+    if [ -z "$kernelpath" ]; then
         # CAREFUL reading this message: reaching here does NOT prove the ISO
         # lacks a kernel. If the `loopback` attach above failed, (loop) doesn't
         # exist and all three tests fail too. So show what GRUB can actually
@@ -300,17 +328,37 @@ function boot_iso {
         echo "What GRUB can see inside that ISO:"
         ls (loop)/
         echo
+        echo "Sizes GRUB sees for the ISO files themselves:"
+        ls -l ($root)/isos/
+        echo
         echo "  - listing shows EFI/ images/ LiveOS/ etc -> genuinely an"
         echo "    unexpected layout; add its kernel path to boot_iso."
-        echo "  - listing empty or errors -> the ISO was never attached. Check"
-        echo "    the file exists on this partition and isn't a truncated copy."
+        echo "  - \"unknown filesystem\" -> GRUB opened the file but found nothing"
+        echo "    filesystem-shaped inside. Almost always an incomplete copy:"
+        echo "    compare the size above against the real ISO, and re-verify"
+        echo "    its sha256 on the host AFTER dropping caches."
+        echo "  - listing empty or errors otherwise -> never attached; check the"
+        echo "    file actually exists on this partition."
         echo "Press a key to return to the menu..."
         read
         loopback -d loop
         return
     fi
 
-    if [ -e (loop)/LiveOS/squashfs.img ]; then
+    # Live vs installer. NOT testable via LiveOS/squashfs.img: RHEL/Rocky/Alma
+    # DVDs contain that file too -- it is Anaconda's own runtime, the thing
+    # inst.stage2 mounts. The dependable marker of INSTALLER media is /.treeinfo
+    # (compose metadata, absent from live media); osbuild installers are caught
+    # by their baked-in kickstart.
+    if [ -e (loop)/.treeinfo ]; then
+        set isinstaller=1
+    elif [ -e (loop)/osbuild.ks ]; then
+        set isinstaller=1
+    else
+        set isinstaller=0
+    fi
+
+    if [ "$isinstaller" = 0 ]; then
         # --- Live image (Fedora Workstation / Spins) ---
         # Kickstart is an installer concept, so it's ignored here on purpose.
         # CDLABEL is the ISO's OWN label, and that is correct here: dracut's
@@ -321,10 +369,10 @@ function boot_iso {
             echo "Press a key..."
             read
         fi
-        linux (loop)$kernel \
+        linux $kernelpath \
               root=live:CDLABEL=$isolabel rd.live.image \
               iso-scan/filename=$isofile $liveargs
-        initrd (loop)$initrdimg
+        initrd $initrdpath
         # Explicit boot: the script-level `boot` command runs even with a stale
         # grub_errno, unlike the implicit boot GRUB does for you.
         boot
@@ -353,11 +401,11 @@ function boot_iso {
             set ksarg=""
         fi
         # No `quiet` -- while this is still new, you want the messages.
-        linux (loop)$kernel \
+        linux $kernelpath \
               inst.stage2=hd:LABEL=$datalabel:$isofile \
               inst.repo=hd:LABEL=$datalabel:$isofile \
               $ksarg
-        initrd (loop)$initrdimg
+        initrd $initrdpath
         boot
     fi
 }
@@ -394,7 +442,15 @@ for isofile in /isos/*.iso; do
             # Again: no pre-emptive detach (see boot_iso). The detach AFTER the
             # attach below is fine -- it succeeds, so it leaves no error behind.
             loopback liveprobe ($root)$isofile
-            if [ -e (liveprobe)/LiveOS/squashfs.img ]; then set islive=1; else set islive=0; fi
+            # Same test as boot_iso: /.treeinfo marks installer media. Do NOT use
+            # LiveOS/squashfs.img -- installer DVDs carry that file as well.
+            if [ -e (liveprobe)/.treeinfo ]; then
+                set islive=0
+            elif [ -e (liveprobe)/osbuild.ks ]; then
+                set islive=0
+            else
+                set islive=1
+            fi
             loopback -d liveprobe
 
             if [ "$islive" = 1 ]; then

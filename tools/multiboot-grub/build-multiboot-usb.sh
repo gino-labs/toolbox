@@ -242,6 +242,8 @@ insmod probe
 insmod regexp
 insmod search_label
 insmod all_video
+insmod boot            # provides the explicit `boot` command used below
+insmod ls              # so failure paths can list what GRUB actually sees
 
 set timeout=20
 set default=0
@@ -262,12 +264,15 @@ search --no-floppy --label $datalabel --set=root
 #   $liveargs = extra kernel args, live entries only
 # -----------------------------------------------------------------------------
 function boot_iso {
-    # Detach any leftover loop from a previous (failed/aborted) selection so a
-    # retry or a different ISO doesn't hit "device name already exists". On a
-    # fresh session there's nothing to detach -- GRUB prints a harmless
-    # "no such device: loop" and carries on.
-    loopback -d loop
-
+    # NO pre-emptive "loopback -d loop" here, on purpose. Two reasons:
+    #   1. It is unnecessary -- GRUB's loopback command already REPLACES an
+    #      existing device of the same name (closes the old file, reuses the
+    #      slot). There is no "name already exists" error to avoid.
+    #   2. It is actively harmful. On a fresh session it fails with
+    #      "grub-core/disk/loopback.c:delete_loopback:59:device not found",
+    #      and GRUB skips the implicit boot at the end of a menu entry unless
+    #      grub_errno is clear -- so a cosmetic error silently blocks booting.
+    #
     # Mount the chosen ISO as (loop), then read its own volume label fresh.
     loopback loop ($root)$isofile
     probe --set=isolabel --label (loop)
@@ -285,8 +290,20 @@ function boot_iso {
         set kernel=/isolinux/vmlinuz0
         set initrdimg=/isolinux/initrd0.img
     else
+        # CAREFUL reading this message: reaching here does NOT prove the ISO
+        # lacks a kernel. If the `loopback` attach above failed, (loop) doesn't
+        # exist and all three tests fail too. So show what GRUB can actually
+        # see, which separates the two cases at a glance.
         echo "No kernel found (looked in images/pxeboot and isolinux) in:"
         echo "  $isofile"
+        echo
+        echo "What GRUB can see inside that ISO:"
+        ls (loop)/
+        echo
+        echo "  - listing shows EFI/ images/ LiveOS/ etc -> genuinely an"
+        echo "    unexpected layout; add its kernel path to boot_iso."
+        echo "  - listing empty or errors -> the ISO was never attached. Check"
+        echo "    the file exists on this partition and isn't a truncated copy."
         echo "Press a key to return to the menu..."
         read
         loopback -d loop
@@ -308,6 +325,9 @@ function boot_iso {
               root=live:CDLABEL=$isolabel rd.live.image \
               iso-scan/filename=$isofile $liveargs
         initrd (loop)$initrdimg
+        # Explicit boot: the script-level `boot` command runs even with a stale
+        # grub_errno, unlike the implicit boot GRUB does for you.
+        boot
     else
         # --- Anaconda installer (RHEL/Rocky/Alma/CentOS/Fedora + osbuild) ---
         # inst.stage2 = where the installer runtime (squashfs) is
@@ -338,6 +358,7 @@ function boot_iso {
               inst.repo=hd:LABEL=$datalabel:$isofile \
               $ksarg
         initrd (loop)$initrdimg
+        boot
     fi
 }
 
@@ -370,7 +391,8 @@ for isofile in /isos/*.iso; do
             # submenu). If it's a Live image, kickstart is meaningless, so we
             # won't offer kickstart entries at all. Uses its own loop name so it
             # never clashes with boot_iso's (loop).
-            loopback -d liveprobe
+            # Again: no pre-emptive detach (see boot_iso). The detach AFTER the
+            # attach below is fine -- it succeeds, so it leaves no error behind.
             loopback liveprobe ($root)$isofile
             if [ -e (liveprobe)/LiveOS/squashfs.img ]; then set islive=1; else set islive=0; fi
             loopback -d liveprobe

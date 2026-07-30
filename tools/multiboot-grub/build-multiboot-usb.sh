@@ -1,3 +1,230 @@
+#!/usr/bin/env bash
+#
+# build-multiboot-usb.sh
+# -----------------------------------------------------------------------------
+# Build a Ventoy-style, self-scanning multiboot USB for the RHEL family
+# (RHEL, Rocky, AlmaLinux, CentOS Stream) plus Fedora (Live + installer).
+#
+# It creates this layout on the target device:
+#   part1  ~100 MiB  FAT32  label MULTIESP  ->  holds the UEFI bootloader
+#   part2  remainder ext4   label MULTIISO  ->  drop your *.iso files in /isos
+#
+# Why ext4 (not FAT32) for the data partition: RHEL/Rocky/Alma DVD ISOs are
+# well over 4 GiB, and FAT32 caps single files at 4 GiB. GRUB reads ext4
+# natively, so this is the least-fuss choice on a Linux host.
+#
+# UEFI ONLY. (ryzenbolt and any modern Ryzen box boot UEFI; adding legacy BIOS
+# means a BIOS-boot partition + i386-pc target, which is a "build-on", not MVP.)
+#
+# !! SECURE BOOT MUST BE DISABLED ON THE TARGET MACHINE !!
+# grub-mkstandalone produces an UNSIGNED BOOTX64.EFI. With Secure Boot on, the
+# firmware silently refuses it -- the stick often doesn't even appear in the boot
+# menu, or you get a one-line "Security Policy Violation". Nothing in this script
+# can work around that; it's a firmware setting. (Signing your own binary with a
+# MOK, or chainloading the distro's signed shim, is a later build-on.)
+#
+# Host packages needed (Fedora/RHEL):
+#   sudo dnf install grub2-efi-x64-modules grub2-tools-extra parted \
+#                    dosfstools e2fsprogs
+#
+# Usage:
+#   sudo ./build-multiboot-usb.sh /dev/sdX     # whole device, NOT a partition
+#
+# Then copy ISOs onto the stick:
+#   cp Rocky-9.5-x86_64-dvd.iso  /run/media/$USER/MULTIISO/isos/
+# -----------------------------------------------------------------------------
+set -euo pipefail
+
+ESP_LABEL="MULTIESP"
+DATA_LABEL="MULTIISO"
+GRUB_EFI_DIR="/usr/lib/grub/x86_64-efi"   # where the *.mod files live (Fedora/RHEL)
+
+# ---------- 0. args, root, tooling ----------
+DEV="${1:-}"
+if [[ -z "$DEV" || ! -b "$DEV" ]]; then
+    echo "Usage: sudo $0 /dev/sdX   (whole device, e.g. /dev/sdb, NOT /dev/sdb1)" >&2
+    exit 1
+fi
+if [[ $EUID -ne 0 ]]; then
+    echo "Please run as root (sudo)." >&2
+    exit 1
+fi
+
+# ---------- 0b. preflight: verify all tools + GRUB EFI modules are present ----------
+# Runs BEFORE anything destructive so a missing package can't leave a half-built
+# stick. Collects ALL missing deps and prints one dnf line (package names are
+# Fedora/RHEL; Debian/Ubuntu equivalents differ).
+missing_cmds=()
+missing_pkgs=()
+need() {  # need <command-or-path> <package>
+    if [[ "$1" == /* ]]; then
+        [[ -e "$1" ]] || { missing_cmds+=("$1"); missing_pkgs+=("$2"); }
+    else
+        command -v "$1" >/dev/null 2>&1 || { missing_cmds+=("$1"); missing_pkgs+=("$2"); }
+    fi
+}
+
+need parted    parted
+need mkfs.vfat dosfstools
+need mkfs.ext4 e2fsprogs
+need wipefs    util-linux
+need lsblk     util-linux
+need udevadm   systemd-udev
+need dumpe2fs  e2fsprogs
+# grub-mkstandalone embeds a font (default: unicode) and aborts without it.
+need /usr/share/grub/unicode.pf2 grub2-common
+
+# grub-mkstandalone: named grub2-* on Fedora/RHEL, grub-* elsewhere. Need one.
+if command -v grub2-mkstandalone >/dev/null 2>&1; then
+    MKSTANDALONE="grub2-mkstandalone"
+elif command -v grub-mkstandalone >/dev/null 2>&1; then
+    MKSTANDALONE="grub-mkstandalone"
+else
+    missing_cmds+=("grub2-mkstandalone")
+    missing_pkgs+=("grub2-tools-extra")
+fi
+
+# The x86_64-efi module set -- this is the piece behind the "modinfo.sh doesn't
+# exist" error. It ships separately from the grub tools and the BIOS modules.
+need "$GRUB_EFI_DIR/modinfo.sh" grub2-efi-x64-modules
+
+if (( ${#missing_pkgs[@]} > 0 )); then
+    echo "Missing dependencies:" >&2
+    for i in "${!missing_cmds[@]}"; do
+        printf '  - %-38s (package: %s)\n' "${missing_cmds[$i]}" "${missing_pkgs[$i]}" >&2
+    done
+    uniq_pkgs=$(printf '%s\n' "${missing_pkgs[@]}" | sort -u | tr '\n' ' ')
+    echo >&2
+    echo "Install them, then re-run:" >&2
+    echo "  sudo dnf install ${uniq_pkgs% }" >&2
+    exit 1
+fi
+
+# nvme0n1 -> nvme0n1p1 ; mmcblk0 -> mmcblk0p1 ; sdb -> sdb1
+if [[ "$DEV" =~ [0-9]$ ]]; then PSEP="p"; else PSEP=""; fi
+ESP_PART="${DEV}${PSEP}1"
+DATA_PART="${DEV}${PSEP}2"
+
+# ---------- 1. confirm (destructive!) ----------
+echo "About to ERASE and repartition this device:"
+lsblk -do NAME,MODEL,SIZE,TRAN "$DEV" 2>/dev/null || true
+echo
+read -rp "Type ERASE (all caps) to continue: " ans
+[[ "$ans" == "ERASE" ]] || { echo "Aborted."; exit 1; }
+
+# ---------- 2. clear any existing mounts on the device ----------
+umount "${DEV}"?* 2>/dev/null || true
+
+# ---------- 3. partition: GPT, ESP + data ----------
+wipefs -a "$DEV"
+parted -s "$DEV" mklabel gpt
+parted -s "$DEV" mkpart "$ESP_LABEL"  fat32 1MiB 101MiB
+parted -s "$DEV" set 1 esp on                 # flag the ESP so firmware finds it
+parted -s "$DEV" mkpart "$DATA_LABEL" ext4  101MiB 100%
+udevadm settle
+sleep 1
+
+# ---------- 4. filesystems ----------
+mkfs.vfat -F32 -n "$ESP_LABEL"  "$ESP_PART"    # -n = FAT volume label
+# THE BIG GOTCHA. e2fsprogs 1.47+ (Fedora 39+) enables `orphan_file` and
+# `metadata_csum_seed` by default, and GRUB's ext2 driver refuses any filesystem
+# carrying feature flags it doesn't recognise. Result: GRUB starts, then
+# "error: unknown filesystem" and a grub rescue> prompt.
+#   -O  = set filesystem features; a leading ^ means "turn this feature OFF"
+# Older e2fsprogs doesn't know these names at all, hence the fallback.
+GRUB_UNSAFE_FEATURES="^orphan_file,^metadata_csum_seed"
+if ! mkfs.ext4 -F -O "$GRUB_UNSAFE_FEATURES" -L "$DATA_LABEL" "$DATA_PART" 2>/dev/null; then
+    echo "note: this e2fsprogs doesn't know $GRUB_UNSAFE_FEATURES; using defaults."
+    mkfs.ext4 -F -L "$DATA_LABEL" "$DATA_PART"   # -L = ext label (search matches on this)
+fi
+
+# Show what we actually ended up with -- if orphan_file or metadata_csum_seed
+# still appear here, GRUB will not be able to read this partition.
+echo "ext4 features on $DATA_PART:"
+dumpe2fs -h "$DATA_PART" 2>/dev/null | sed -n 's/^Filesystem features:/  /p'
+if dumpe2fs -h "$DATA_PART" 2>/dev/null | grep -qE 'orphan_file|metadata_csum_seed'; then
+    echo "  WARNING: GRUB-incompatible feature still enabled. Try manually:" >&2
+    echo "    tune2fs -O ^orphan_file,^metadata_csum_seed $DATA_PART" >&2
+fi
+
+# ---------- 5. mount ----------
+ESP_MNT="$(mktemp -d)"
+DATA_MNT="$(mktemp -d)"
+mount "$ESP_PART"  "$ESP_MNT"
+mount "$DATA_PART" "$DATA_MNT"
+mkdir -p "$ESP_MNT/EFI/BOOT" "$DATA_MNT/isos" "$DATA_MNT/kickstarts" "$DATA_MNT/boot/grub"
+
+# ---------- 6. build a self-contained BOOTX64.EFI ----------
+# We use grub-mkstandalone instead of grub-install on purpose:
+# Fedora's grub2-install is patched to be a no-op for EFI (it expects the
+# distro's signed shim). mkstandalone bakes the modules + a tiny early config
+# into one portable BOOTX64.EFI, sidestepping that entirely.
+#
+# The early config just finds the data partition by label and hands control to
+# the *editable* grub.cfg on the stick, so you can tweak the menu without
+# rebuilding this binary.
+#
+# NOTE on `set prefix`: $prefix is where GRUB looks for .mod files when the menu
+# runs `insmod`. Pointing it at the stick is only safe if the modules are
+# actually THERE -- GRUB looks in $prefix/<cpu>-<platform>/, i.e.
+# /boot/grub/x86_64-efi/. Without this copy, every insmod for a module that
+# wasn't baked into BOOTX64.EFI fails, and you can't even `insmod ls` to debug.
+mkdir -p "$DATA_MNT/boot/grub/x86_64-efi"
+cp -a "$GRUB_EFI_DIR"/. "$DATA_MNT/boot/grub/x86_64-efi/"
+
+EARLY_CFG="$(mktemp)"
+cat > "$EARLY_CFG" <<EARLY
+search --no-floppy --label $DATA_LABEL --set=root
+set prefix=(\$root)/boot/grub
+configfile (\$root)/boot/grub/grub.cfg
+EARLY
+
+# Split modules into ESSENTIAL (boot breaks without them -> hard error if absent)
+# and OPTIONAL (nice-to-have, or provided by another module -> skip silently).
+#
+# Why filter at all: Fedora's EFI module set doesn't ship every module name.
+# e.g. there is no standalone initrd.mod -- the `initrd` command comes bundled
+# in linux.mod. Passing a name with no matching .mod file makes mkstandalone
+# abort ("cannot open <name>.mod"). So we only pass names that actually exist,
+# and we fail loudly only if something we truly need is gone.
+essential_mods="search search_label configfile normal linux \
+                part_gpt ext2 iso9660 loopback probe regexp test echo"
+optional_mods="search_fs_uuid part_msdos fat exfat true initrd read sleep \
+               all_video videoinfo gfxterm terminal ls halt reboot boot"
+
+mods=()
+missing_essential=()
+for m in $essential_mods; do
+    if [[ -f "$GRUB_EFI_DIR/$m.mod" ]]; then
+        mods+=("$m")
+    else
+        missing_essential+=("$m")
+    fi
+done
+for m in $optional_mods; do
+    [[ -f "$GRUB_EFI_DIR/$m.mod" ]] && mods+=("$m")   # silently skip if absent
+done
+
+if (( ${#missing_essential[@]} > 0 )); then
+    echo "Essential GRUB modules missing from $GRUB_EFI_DIR:" >&2
+    printf '  - %s.mod\n' "${missing_essential[@]}" >&2
+    echo "Your grub2-efi-x64-modules package looks incomplete; reinstall it." >&2
+    exit 1
+fi
+
+# -d/--directory pins the module source dir (also silences the earlier
+# "specify --target or --directory" hint if auto-detection ever fails).
+"$MKSTANDALONE" \
+    -O x86_64-efi \
+    -d "$GRUB_EFI_DIR" \
+    -o "$ESP_MNT/EFI/BOOT/BOOTX64.EFI" \
+    --modules="${mods[*]}" \
+    "boot/grub/grub.cfg=$EARLY_CFG"
+
+rm -f "$EARLY_CFG"
+
+# ---------- 7. write the real, self-scanning menu ----------
+cat > "$DATA_MNT/boot/grub/grub.cfg" <<'CFG'
 # -----------------------------------------------------------------------------
 # Self-scanning multiboot menu for the RHEL family + Fedora.
 #   ISOs       -> /isos/*.iso        on this (MULTIISO) partition
@@ -23,7 +250,7 @@ set pager=1
 # The label of THIS partition. Every kernel argument that has to survive into
 # the running kernel must reference this, not the ISO's internal label -- the
 # kernel can find a real partition by label; it cannot find GRUB's (loop).
-set datalabel=MULTIISO
+set datalabel=@DATA_LABEL@
 
 # Make (root) point at THIS partition so /isos/*.iso globs resolve here.
 search --no-floppy --label $datalabel --set=root
@@ -210,3 +437,29 @@ menuentry "Diagnostics: list /isos and /kickstarts" {
 }
 menuentry "Reboot" { reboot }
 menuentry "Shut down" { halt }
+CFG
+# The menu is written with a QUOTED heredoc so $isofile etc. survive as literal
+# GRUB variables; the one thing we do want substituted is the partition label.
+sed -i "s/@DATA_LABEL@/$DATA_LABEL/g" "$DATA_MNT/boot/grub/grub.cfg"
+
+# ---------- 8. finish ----------
+sync
+umount "$ESP_MNT" "$DATA_MNT"
+rmdir  "$ESP_MNT" "$DATA_MNT"
+
+echo
+echo "Done."
+echo "  ESP  : $ESP_PART  (label $ESP_LABEL)   -> /EFI/BOOT/BOOTX64.EFI"
+echo "  DATA : $DATA_PART (label $DATA_LABEL)  -> put ISOs in /isos, kickstarts in /kickstarts"
+echo
+echo "Copy ISOs, e.g.:"
+echo "  cp Rocky-9.5-x86_64-dvd.iso  /run/media/\$USER/$DATA_LABEL/isos/"
+echo
+echo "BEFORE you blame the stick:"
+echo "  1. DISABLE SECURE BOOT on the target machine. BOOTX64.EFI is unsigned."
+echo "  2. Boot the USB via the firmware's one-time boot menu (F12 / F11 / F8)."
+echo "  3. Test without rebooting real hardware, straight off the device:"
+echo "       sudo qemu-system-x86_64 -enable-kvm -m 4096 \\"
+echo "         -bios /usr/share/edk2/ovmf/OVMF_CODE.fd \\"
+echo "         -drive format=raw,file=$DEV"
+echo "     (OVMF here has Secure Boot off, so this tests everything EXCEPT signing.)"

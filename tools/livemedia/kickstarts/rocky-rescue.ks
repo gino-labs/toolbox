@@ -22,6 +22,9 @@ network --bootproto=dhcp --device=link --activate --hostname=rocky-rescue
 
 services --enabled="NetworkManager,sshd"
 
+cdrom
+repo --name="epel" --metalink="https://mirrors.fedoraproject.org/metalink?repo=epel-9&arch=x86_64"
+
 # This layout is for livemedia-creator's temporary installation disk.
 zerombr
 clearpart --all --initlabel

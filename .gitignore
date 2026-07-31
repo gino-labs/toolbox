@@ -3,3 +3,6 @@
 
 # Ignore pycache
 *__pycache__**
+
+# VIM
+*.swp**

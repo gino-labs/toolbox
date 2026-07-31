@@ -1,6 +1,5 @@
 #Commands
 
-text
 eula --agreed
 firstboot --disable
 
@@ -18,11 +17,12 @@ selinux --enforcing
 firewall --enabled --service=ssh
 
 # Use the first interface that has carrier.
-network --bootproto=dhcp --device=link --activate --hostname=rocky-rescue
+network --bootproto=dhcp --device=link --activate --hostname=rhel-rescue
 
 services --enabled="NetworkManager,sshd"
 
-cdrom
+url --url="file:///run/install/repo/BaseOS"
+repo --name="AppStream" --baseurl="file:///run/install/repo/AppStream"
 repo --name="epel" --metalink="https://mirrors.fedoraproject.org/metalink?repo=epel-9&arch=x86_64"
 
 # This layout is for livemedia-creator's temporary installation disk.
@@ -46,6 +46,7 @@ kernel-modules-extra
 dracut
 dracut-live
 squashfs-tools
+redhat-logos
 
 # ---------------------------------------------------------
 # Essential shell and administrative tools
@@ -127,6 +128,7 @@ mokutil
 fwupd
 rasdaemon
 mcelog
+memtest86+
 
 # ---------------------------------------------------------
 # Network configuration and diagnostics
@@ -183,7 +185,6 @@ usbutils
 systemd
 systemd-udev
 systemd-container
-journalctl
 kexec-tools
 dracut-config-rescue
 
@@ -285,13 +286,12 @@ set -euxo pipefail
 # System identity
 # ---------------------------------------------------------
 
-echo 'rocky9-rescue' > /etc/hostname
+echo 'rhel9-rescue' > /etc/hostname
 
 # Generate a unique machine ID on every live boot.
 truncate -s 0 /etc/machine-id
-
-rm -f /var/lib/dbus/machine-id
-ln -s /etc/machine-id /var/lib/dbus/machine-id
+install -d -m 0755 /var/lib/dbus
+ln -sfn ../../../etc/machine-id /var/lib/dbus/machine-id
 
 # ---------------------------------------------------------
 # Required services

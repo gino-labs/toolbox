@@ -28,9 +28,9 @@ repo --name="epel" --metalink="https://mirrors.fedoraproject.org/metalink?repo=e
 # This layout is for livemedia-creator's temporary installation disk.
 zerombr
 clearpart --all --initlabel
-part / --fstype=xfs --size=16384
+part / --fstype=xfs --size=16384 --grow
 
-bootloader --location=mbr --timeout=3
+bootloader --location=mbr 
 
 shutdown
 
@@ -46,6 +46,13 @@ kernel-modules-extra
 dracut
 dracut-live
 squashfs-tools
+grub2-efi-x64
+grub2-efi-x64-modules
+grub2-tools
+grub2-tools-minimal
+shim-x64
+efibootmgr
+syslinux
 redhat-logos
 
 # ---------------------------------------------------------
@@ -286,7 +293,7 @@ set -euxo pipefail
 # System identity
 # ---------------------------------------------------------
 
-echo 'rhel9-rescue' > /etc/hostname
+echo 'rhel-rescue' > /etc/hostname
 
 # Generate a unique machine ID on every live boot.
 truncate -s 0 /etc/machine-id

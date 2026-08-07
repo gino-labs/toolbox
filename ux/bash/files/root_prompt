@@ -74,7 +74,7 @@ HIDDEN=8
 STRIKETHRU=9
 
 # Prompt Color Controls
-ROOT_CLR=163
+ROOT_CLR=161
 
 ACCENT_CLR=$(set_fg 15)
 USER_CLR=$(set_fg "$ROOT_CLR" "$BOLD")

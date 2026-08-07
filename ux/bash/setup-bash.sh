@@ -5,6 +5,10 @@ BD="$HOME/.bashrc.d"
 
 find files -iname 'bash_*' -type f -print -exec cp {} "$BD/" \; 
 
+if [[ $EUID == 0 ]]; then
+  cp -v files/root_prompt "$BD/bash_prompt"
+fi
+
 if ! grep -q "Source Bash Files" "$HOME/.bashrc"; then
 cat >> "$HOME/.bashrc" <<'EOF'
 # Source Bash Files

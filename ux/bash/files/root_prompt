@@ -1,0 +1,115 @@
+# Safegaurd for non-interactive shells
+[[ $- != *i* ]] && return
+
+# Cursor Style
+printf '\e[1 q' # Shape
+printf '\e]12;#D0D0D0\a' # Color
+
+# Helper Functions
+roll_rand() {
+    roll=$(od -An -N4 -tu4 /dev/urandom | tr -d '[:space:]')
+    num=$(( (roll  % $#) + 1))
+    printf '%s' "${!num}"
+}
+calc216() {
+    local R=$1 G=$2 B=$3 calc
+    calc=$((16 + 36*R + 6*G + B))
+    printf '%s' "$calc"
+}
+set_fg() {
+    if [[ -n "${2-}" ]]; then
+        mode="${2};"
+    else
+        mode=""
+    fi
+    printf "\[\033[${mode}38;5;${1}m\]"
+}
+set_bg() {
+    if [[ -n "${2-}" ]]; then
+        mode="${2};"
+    else
+        mode=""
+    fi
+    printf "\[\033[${mode}48;5;${1}m\]"
+}
+ansi_esc() {
+    printf "\[\033[${1}\]"
+}
+random_color() {
+    RGB_SELECTION="$(roll_rand "red" "green" "blue")"
+    CONTROL_COLOR="$(roll_rand 1 2 3 4)"
+    OTHER_COLOR_1="$(roll_rand 0 1 2 3 4 5)"
+    OTHER_COLOR_2="$(roll_rand 0 1 2 3 4 5)"
+    case "$RGB_SELECTION" in
+        red) calc216 "$CONTROL_COLOR" "$OTHER_COLOR_1" "$OTHER_COLOR_2" ;;
+        green) calc216 "$OTHER_COLOR_1" "$CONTROL_COLOR" "$OTHER_COLOR_2" ;;
+        blue) calc216 "$OTHER_COLOR_1" "$OTHER_COLOR_2" "$CONTROL_COLOR" ;;
+    esac
+}
+rainbow() {
+    case "$RAINBOW_MODE" in
+        false) RAINBOW_MODE=true ;;
+        true) RAINBOW_MODE=false ;;
+        *) RAINBOW_MODE=false ;;
+    esac
+}
+
+# Box Drawing Unicodes
+HL=$'\u2500'
+VL=$'\u2502'
+R_TRI=$'\u25B7'
+L_SEP=$'\u2524'
+DR_RND=$'\u256D'
+UR_RND=$'\u2570'
+DFLAG=$'\u0394'
+
+# Mode Codes
+BOLD=1
+DIM=2
+ITALIC=3
+UNDERLINE=4
+BLINK=5
+REVERSE=7
+HIDDEN=8
+STRIKETHRU=9
+
+# Prompt Color Controls
+ROOT_CLR=163
+
+ACCENT_CLR=$(set_fg 15)
+USER_CLR=$(set_fg "$ROOT_CLR" "$BOLD")
+HOST_CLR=$(set_fg "$ROOT_CLR" "$BOLD")
+WDIR_CLR=$(set_fg 250 "$BOLD")
+VENV_CLR=$(set_fg 250 "$BOLD")
+REPO_CLR=$(set_fg 250 "$BOLD")
+ERR_CLR=$(set_fg 196)
+RESET=$(ansi_esc "0m")
+
+# Control flag defaults
+RAINBOW_MODE=false
+
+prompt() {
+    # Display exit code on error
+    local EC=$? b
+    # Time
+    F1="${ACCENT_CLR}\\A"
+
+    if $RAINBOW_MODE; then
+        USER_CLR=$(set_fg "$(random_color)" "$BOLD")
+        HOST_CLR=$(set_fg "$(random_color)" "$BOLD")
+    fi
+
+    # Prompt build out
+    TOP="${ACCENT_CLR}${DR_RND}${L_SEP}${F1}${RESET}${VL}${USER_CLR}\\u${RESET}${ACCENT_CLR}@${RESET}${HOST_CLR}\\h${RESET}${ACCENT_CLR}:${RESET}${WDIR_CLR}\\W${RESET}${ACCENT_CLR}${VL}\\$"
+
+    if (( EC != 0 )); then
+        TOP+="${ERR_CLR} ${EC}${RESET}\\n"
+    else
+        TOP+="\\n"
+    fi
+
+    BOT="${ACCENT_CLR}${UR_RND}${HL}${HL}${HL}${R_TRI}${RESET} "
+    PS1="${TOP}${BOT}"
+}
+PROMPT_COMMAND='prompt'
+

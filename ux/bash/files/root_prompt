@@ -74,12 +74,10 @@ HIDDEN=8
 STRIKETHRU=9
 
 # Prompt Color Controls
-ROOT_CLR=161
-
 ACCENT_CLR=$(set_fg 15)
-USER_CLR=$(set_fg "$ROOT_CLR" "$BOLD")
-HOST_CLR=$(set_fg "$ROOT_CLR" "$BOLD")
-WDIR_CLR=$(set_fg 250 "$BOLD")
+USER_CLR=$(set_fg 196 "$BOLD")
+HOST_CLR=$(set_fg 46 "$BOLD")
+WDIR_CLR=$(set_fg 21 "$BOLD")
 VENV_CLR=$(set_fg 250 "$BOLD")
 REPO_CLR=$(set_fg 250 "$BOLD")
 ERR_CLR=$(set_fg 196)

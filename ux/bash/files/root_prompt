@@ -75,9 +75,9 @@ STRIKETHRU=9
 
 # Prompt Color Controls
 ACCENT_CLR=$(set_fg 15)
-USER_CLR=$(set_fg 196 "$ITALIC")
-HOST_CLR=$(set_fg 46 "$ITALIC")
-WDIR_CLR=$(set_fg 21 "$ITALIC")
+USER_CLR=$(set_fg 1 "$ITALIC")
+HOST_CLR=$(set_fg 2 "$ITALIC")
+WDIR_CLR=$(set_fg 12 "$ITALIC")
 ERR_CLR=$(set_fg 196 "$BOLD" )
 RESET=$(ansi_esc "0m")
 

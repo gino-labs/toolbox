@@ -75,12 +75,10 @@ STRIKETHRU=9
 
 # Prompt Color Controls
 ACCENT_CLR=$(set_fg 15)
-USER_CLR=$(set_fg 196 "$BOLD")
-HOST_CLR=$(set_fg 46 "$BOLD")
-WDIR_CLR=$(set_fg 21 "$BOLD")
-VENV_CLR=$(set_fg 250 "$BOLD")
-REPO_CLR=$(set_fg 250 "$BOLD")
-ERR_CLR=$(set_fg 196)
+USER_CLR=$(set_fg 196 "$ITALIC")
+HOST_CLR=$(set_fg 46 "$ITALIC")
+WDIR_CLR=$(set_fg 21 "$ITALIC")
+ERR_CLR=$(set_fg 196 "$BOLD" )
 RESET=$(ansi_esc "0m")
 
 # Control flag defaults

@@ -1,20 +1,27 @@
 #!/usr/bin/env bash
 
 # General
-alias ll="ls -lh"
-alias la="ls -A"
-alias lz="ls -lZ"
-alias ld="ls -ld"
-alias l1="ls -1"
-alias lla="ls -la"
-alias lls="ls -laZ"
+alias ll="ls -l"
+alias la="ls -a"
+alias cls="clear && ls"
 
 # Ansible
 alias apb="ansible-playbook"
 alias adoc="ansible-doc"
- 
+alias acfg="ansible-config"
+alias avlt="ansible-vault"
+alias agal="ansible-galaxy"
+alias alint="ansible-lint"
+
+# Python
+alias python="python3"
+alias pypile="python3 -m py_compile"
+
 # System
-alias sys-verify="systemd-analyze verify" 
+alias sl="systemctl"
+alias jl="journalctl"
+
+alias arsync="rsync -havuHP --stats"
 
 # OSBuild Composer
 alias ccli="composer-cli"

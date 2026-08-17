@@ -20,6 +20,7 @@ alias pypile="python3 -m py_compile"
 # System
 alias sl="systemctl"
 alias jl="journalctl"
+alias vr="vim -R"
 
 alias arsync="rsync -havuHP --stats"
 
